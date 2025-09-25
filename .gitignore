@@ -1,0 +1,19 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente
+.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Pastas temporárias
+dist/
+coverage/
+.vscode/
+.DS_Store
+
+# Docker override
+docker-compose.override.yml
