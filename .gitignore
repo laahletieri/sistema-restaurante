@@ -17,3 +17,8 @@ coverage/
 
 # Docker override
 docker-compose.override.yml
+
+database.db
+
+.DS_Store
+Thumbs.db

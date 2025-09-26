@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reservas de Restaurantes</title>
+    <!-- Incluindo o Tailwind CSS para um design rápido e moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Estilo customizado para um feedback visual ao carregar */
+      .loading-list::after {
+        content: "Carregando...";
+        display: block;
+        text-align: center;
+        padding: 1rem;
+        color: #9ca3af;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 text-gray-800 font-sans p-4 sm:p-8">
+    <div class="max-w-6xl mx-auto">
+      <header class="text-center mb-10">
+        <h1 class="text-4xl font-bold text-gray-900">Sistema de Reservas</h1>
+        <p class="text-lg text-gray-600 mt-2">
+          Cadastre clientes e faça suas reservas de forma simples.
+        </p>
+      </header>
+
+      <!-- Container principal com duas colunas -->
+      <main class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Coluna de Clientes -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+          <h2 class="text-2xl font-semibold mb-4 border-b pb-2">
+            Gerenciar Clientes
+          </h2>
+
+          <!-- Formulário para adicionar novo cliente -->
+          <form id="form-cliente" class="space-y-4 mb-6">
+            <h3 class="font-medium text-lg">Novo Cliente</h3>
+            <div>
+              <label
+                for="nome-cliente"
+                class="block text-sm font-medium text-gray-700"
+                >Nome:</label
+              >
+              <input
+                type="text"
+                id="nome-cliente"
+                required
+                class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label
+                for="email-cliente"
+                class="block text-sm font-medium text-gray-700"
+                >Email:</label
+              >
+              <input
+                type="email"
+                id="email-cliente"
+                required
+                class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <button
+              type="submit"
+              class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            >
+              Cadastrar Cliente
+            </button>
+            <div
+              id="cliente-error-message"
+              class="text-red-500 text-sm mt-2"
+            ></div>
+          </form>
+
+          <!-- Lista de Clientes Cadastrados -->
+          <div>
+            <h3 class="font-medium text-lg mb-2">Clientes Cadastrados</h3>
+            <ul
+              id="lista-clientes"
+              class="space-y-2 max-h-80 overflow-y-auto loading-list"
+            >
+              <!-- Clientes serão inseridos aqui via JavaScript -->
+            </ul>
+          </div>
+        </div>
+
+        <!-- Coluna de Reservas -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+          <h2 class="text-2xl font-semibold mb-4 border-b pb-2">
+            Gerenciar Reservas
+          </h2>
+
+          <!-- Formulário para adicionar nova reserva -->
+          <form id="form-reserva" class="space-y-4 mb-6">
+            <h3 class="font-medium text-lg">Nova Reserva</h3>
+            <div>
+              <label
+                for="id-cliente-reserva"
+                class="block text-sm font-medium text-gray-700"
+                >ID do Cliente:</label
+              >
+              <input
+                type="number"
+                id="id-cliente-reserva"
+                required
+                class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label
+                for="restaurante-reserva"
+                class="block text-sm font-medium text-gray-700"
+                >Nome do Restaurante:</label
+              >
+              <input
+                type="text"
+                id="restaurante-reserva"
+                required
+                class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label
+                for="data-reserva"
+                class="block text-sm font-medium text-gray-700"
+                >Data:</label
+              >
+              <input
+                type="date"
+                id="data-reserva"
+                required
+                class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <button
+              type="submit"
+              class="w-full bg-teal-600 text-white py-2 px-4 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors"
+            >
+              Fazer Reserva
+            </button>
+            <div
+              id="reserva-error-message"
+              class="text-red-500 text-sm mt-2"
+            ></div>
+          </form>
+
+          <!-- Lista de Reservas Feitas -->
+          <div>
+            <h3 class="font-medium text-lg mb-2">Reservas Realizadas</h3>
+            <ul
+              id="lista-reservas"
+              class="space-y-3 max-h-80 overflow-y-auto loading-list"
+            >
+              <!-- Reservas serão inseridas aqui via JavaScript -->
+            </ul>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // --- CONFIGURAÇÃO DAS URLs DOS SERVIÇOS ---
+      // Altere estas URLs para os endereços dos seus serviços na AWS quando implantados
+      const CLIENTES_API_URL = "http://localhost:3002";
+      const RESERVAS_API_URL = "http://localhost:3001";
+
+      // --- ELEMENTOS DO DOM ---
+      const formCliente = document.getElementById("form-cliente");
+      const listaClientes = document.getElementById("lista-clientes");
+      const formReserva = document.getElementById("form-reserva");
+      const listaReservas = document.getElementById("lista-reservas");
+      const clienteErrorMessage = document.getElementById(
+        "cliente-error-message"
+      );
+      const reservaErrorMessage = document.getElementById(
+        "reserva-error-message"
+      );
+
+      // --- FUNÇÕES PARA CLIENTES ---
+
+      // Busca e exibe todos os clientes
+      async function fetchClientes() {
+        try {
+          const response = await fetch(`${CLIENTES_API_URL}/clientes`);
+          if (!response.ok) throw new Error("Falha ao buscar clientes.");
+          const clientes = await response.json();
+
+          listaClientes.innerHTML = ""; // Limpa a lista antes de adicionar os novos
+          listaClientes.classList.remove("loading-list");
+
+          if (clientes.length === 0) {
+            listaClientes.innerHTML =
+              '<li class="text-gray-500 text-center p-2">Nenhum cliente cadastrado.</li>';
+          } else {
+            clientes.forEach((cliente) => {
+              const li = document.createElement("li");
+              li.className = "p-3 bg-gray-50 rounded-md border border-gray-200";
+              li.innerHTML = `<span class="font-bold text-gray-700">ID: ${cliente.id}</span> - ${cliente.nome} <span class="text-gray-500">(${cliente.email})</span>`;
+              listaClientes.appendChild(li);
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao buscar clientes:", error);
+          listaClientes.innerHTML = `<li class="text-red-500 text-center p-2">${error.message}</li>`;
+        }
+      }
+
+      // Manipula o envio do formulário de novo cliente
+      formCliente.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clienteErrorMessage.textContent = "";
+
+        const nome = document.getElementById("nome-cliente").value;
+        const email = document.getElementById("email-cliente").value;
+
+        try {
+          const response = await fetch(`${CLIENTES_API_URL}/clientes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, email }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.erro || "Erro desconhecido ao criar cliente."
+            );
+          }
+
+          formCliente.reset(); // Limpa o formulário
+          fetchClientes(); // Atualiza a lista de clientes
+        } catch (error) {
+          console.error("Erro ao criar cliente:", error);
+          clienteErrorMessage.textContent = `Erro: ${error.message}`;
+        }
+      });
+
+      // --- FUNÇÕES PARA RESERVAS ---
+
+      // Busca e exibe todas as reservas
+      async function fetchReservas() {
+        try {
+          const response = await fetch(`${RESERVAS_API_URL}/reservas`);
+          if (!response.ok) throw new Error("Falha ao buscar reservas.");
+          const reservas = await response.json();
+
+          listaReservas.innerHTML = "";
+          listaReservas.classList.remove("loading-list");
+
+          if (reservas.length === 0) {
+            listaReservas.innerHTML =
+              '<li class="text-gray-500 text-center p-2">Nenhuma reserva feita.</li>';
+          } else {
+            reservas.forEach((reserva) => {
+              const li = document.createElement("li");
+              li.className =
+                "p-3 bg-gray-50 rounded-md border border-gray-200 text-sm";
+              li.innerHTML = `
+                            <div class="font-bold text-gray-800">Reserva #${
+                              reserva.id
+                            } - ${reserva.restaurante}</div>
+                            <div class="text-gray-600">Cliente: ${
+                              reserva.cliente.nome
+                            } (ID: ${reserva.cliente.id})</div>
+                            <div class="text-gray-600">Data: ${new Date(
+                              reserva.data
+                            ).toLocaleDateString()}</div>
+                        `;
+              listaReservas.appendChild(li);
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao buscar reservas:", error);
+          listaReservas.innerHTML = `<li class="text-red-500 text-center p-2">${error.message}</li>`;
+        }
+      }
+
+      // Manipula o envio do formulário de nova reserva
+      formReserva.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        reservaErrorMessage.textContent = "";
+
+        const clienteId = document.getElementById("id-cliente-reserva").value;
+        const restaurante = document.getElementById(
+          "restaurante-reserva"
+        ).value;
+        const data = document.getElementById("data-reserva").value;
+
+        try {
+          const response = await fetch(`${RESERVAS_API_URL}/reservas`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clienteId: Number(clienteId),
+              restaurante,
+              data,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.erro || "Erro desconhecido ao criar reserva."
+            );
+          }
+
+          formReserva.reset(); // Limpa o formulário
+          fetchReservas(); // Atualiza a lista de reservas
+        } catch (error) {
+          console.error("Erro ao criar reserva:", error);
+          reservaErrorMessage.textContent = `Erro: ${error.message}`;
+        }
+      });
+
+      // --- INICIALIZAÇÃO ---
+      // Carrega os dados iniciais quando a página é carregada
+      document.addEventListener("DOMContentLoaded", () => {
+        fetchClientes();
+        fetchReservas();
+      });
+    </script>
+  </body>
+</html>

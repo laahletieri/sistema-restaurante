@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  clientes:
+    build: ./clientes
+    ports:
+      - "3000:3000"
+
+  reservas:
+    build: ./reservas
+    ports:
+      - "3001:3001"
+    environment:
+      - CLIENTES_URL=http://clientes:3000
+    depends_on:
+      - clientes
