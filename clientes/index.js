@@ -132,7 +132,7 @@ app.delete("/clientes/:id", async (req, res) => {
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 // --------------------- SERVIDOR ---------------------
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () =>
   console.log(`🚀 Serviço de Clientes rodando na porta ${PORT}`)
 );
