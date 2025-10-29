@@ -9,8 +9,8 @@ app.use(express.json());
 let restaurantes = [];
 let nextId = 1;
 
-
- Configuração futura para MySQL 
+/*
+// Configuração futura para MySQL (quando for subir na AWS)
 const mysql = require("mysql2/promise");
 
 const dbConfig = {
@@ -33,7 +33,7 @@ async function connectDatabase() {
 }
 
 connectDatabase();
-
+*/
 
 // -----------------------------
 // ROTAS CRUD DE RESTAURANTES
