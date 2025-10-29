@@ -44,7 +44,9 @@ app.post("/restaurantes", (req, res) => {
   const { nome, endereco, telefone, tipoCulinaria } = req.body;
 
   if (!nome || !endereco || !telefone) {
-    return res.status(400).json({ erro: "Nome, endereço e telefone são obrigatórios" });
+    return res
+      .status(400)
+      .json({ erro: "Nome, endereço e telefone são obrigatórios" });
   }
 
   const restaurante = {
@@ -52,7 +54,7 @@ app.post("/restaurantes", (req, res) => {
     nome,
     endereco,
     telefone,
-    tipoCulinaria: tipoCulinaria || "Não informado"
+    tipoCulinaria: tipoCulinaria || "Não informado",
   };
 
   restaurantes.push(restaurante);
@@ -66,7 +68,9 @@ app.get("/restaurantes", (req, res) => {
 
 // READ - buscar por ID
 app.get("/restaurantes/:id", (req, res) => {
-  const restaurante = restaurantes.find((r) => r.id === parseInt(req.params.id));
+  const restaurante = restaurantes.find(
+    (r) => r.id === parseInt(req.params.id)
+  );
 
   if (!restaurante) {
     return res.status(404).json({ erro: "Restaurante não encontrado" });

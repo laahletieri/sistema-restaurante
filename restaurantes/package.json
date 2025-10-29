@@ -1,0 +1,17 @@
+{
+  "name": "restaurantes",
+  "version": "1.0.0",
+  "description": "Serviço de restaurantes - sistema de reservas",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
