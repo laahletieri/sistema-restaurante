@@ -12,12 +12,12 @@ const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
-  database: process.env.DB_NAME
+  database: process.env.DB_NAME,
 };
 
 let db;
 
-// Função de conexão
+// Conexão com o banco e criação automática da tabela reservas
 async function connectDatabase() {
   try {
     db = await mysql.createPool(dbConfig);
@@ -29,7 +29,6 @@ async function connectDatabase() {
   }
 }
 
-// Criação automática da tabela
 async function criarTabelaReservas() {
   try {
     await db.query(`
@@ -37,7 +36,9 @@ async function criarTabelaReservas() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         cliente_id INT NOT NULL,
         restaurante_id INT NOT NULL,
-        data_reserva DATETIME NOT NULL
+        data_reserva DATETIME NOT NULL,
+        horario TIME,
+        numero_pessoas INT DEFAULT 1
       );
     `);
     console.log("✅ Tabela 'reservas' pronta para uso.");
@@ -48,60 +49,82 @@ async function criarTabelaReservas() {
 
 connectDatabase();
 
-// ===============================================================
-// 🌐 URLs dos outros serviços
-// ===============================================================
-const CLIENTES_URL = process.env.CLIENTES_URL || "http://clientes-env.eba-ytjkzypy.sa-east-1.elasticbeanstalk.com";
-const RESTAURANTES_URL = process.env.RESTAURANTES_URL || "http://restaurantes-env.eba-ji6s7zmy.sa-east-1.elasticbeanstalk.com";
+// URLs dos outros serviços
+const CLIENTES_URL =
+  process.env.CLIENTES_URL ||
+  "http://clientes-env.eba-ytjkzypy.sa-east-1.elasticbeanstalk.com";
+const RESTAURANTES_URL =
+  process.env.RESTAURANTES_URL ||
+  "http://restaurantes-env.eba-ji6s7zmy.sa-east-1.elasticbeanstalk.com";
 
-// ===============================================================
-// 💡 Endpoints de RESERVAS com integração entre serviços
-// ===============================================================
+// ENDPOINTS DE RESERVAS
 
-// Listar reservas
+// Listar todas as reservas
 app.get("/reservas", async (req, res) => {
-  const [rows] = await db.query("SELECT * FROM reservas");
-  res.json(rows);
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM reservas ORDER BY data_reserva DESC"
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Erro ao listar reservas:", err.message);
+    res.status(500).json({ erro: "Erro ao listar reservas" });
+  }
 });
 
-// Criar reserva
+// Criar nova reserva com CPF e nome do cliente
 app.post("/reservas", async (req, res) => {
   try {
-    const { cliente_id, restaurante_id, data_reserva } = req.body;
+    const { nome, cpf, restaurante_id, data_reserva, horario, numero_pessoas } =
+      req.body;
 
-    if (!cliente_id || !restaurante_id || !data_reserva)
-      return res.status(400).json({ erro: "Campos obrigatórios ausentes" });
-
-    // ⿡ Verifica se o cliente existe
-    const clienteResp = await axios.get(${CLIENTES_URL}/clientes/${cliente_id}).catch(() => null);
-    if (!clienteResp || !clienteResp.data) {
-      return res.status(400).json({ erro: "Cliente inválido ou não encontrado" });
+    if (!cpf || !nome || !restaurante_id || !data_reserva || !horario) {
+      return res.status(400).json({ erro: "Campos obrigatórios ausentes." });
     }
 
-    // ⿢ Verifica disponibilidade no serviço de restaurantes
-    const restauranteResp = await axios.get(${RESTAURANTES_URL}/restaurantes/${restaurante_id}).catch(() => null);
+    // Verifica se o cliente existe via CPF
+    const clienteResp = await axios
+      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`)
+      .catch(() => null);
+
+    if (!clienteResp || !clienteResp.data || clienteResp.data.length === 0) {
+      return res.status(400).json({
+        erro: "Cliente não encontrado. Cadastre o cliente antes de realizar a reserva.",
+      });
+    }
+
+    const cliente = clienteResp.data[0];
+
+    // Verifica restaurante e mesas disponíveis
+    const restauranteResp = await axios
+      .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
+      .catch(() => null);
+
     const restaurante = restauranteResp?.data;
 
     if (!restaurante || restaurante.mesas_disponiveis <= 0) {
-      return res.status(400).json({ erro: "Restaurante sem mesas disponíveis" });
+      return res
+        .status(400)
+        .json({ erro: "Restaurante sem mesas disponíveis." });
     }
 
-    // ⿣ Cria a reserva no banco local
+    // Cria a reserva
     await db.query(
-      "INSERT INTO reservas (cliente_id, restaurante_id, data_reserva) VALUES (?, ?, ?)",
-      [cliente_id, restaurante_id, data_reserva]
+      `INSERT INTO reservas (cliente_id, restaurante_id, data_reserva, horario, numero_pessoas)
+       VALUES (?, ?, ?, ?, ?)`,
+      [cliente.id, restaurante_id, data_reserva, horario, numero_pessoas || 1]
     );
 
-    // ⿤ Atualiza o número de mesas (-1)
-    await axios.patch(${RESTAURANTES_URL}/restaurantes/${restaurante_id}/mesas, {
-      mesas_disponiveis: restaurante.mesas_disponiveis - 1
-    });
+    // Atualiza mesas do restaurante
+    await axios.patch(
+      `${RESTAURANTES_URL}/restaurantes/${restaurante_id}/mesas`,
+      { mesas_disponiveis: restaurante.mesas_disponiveis - 1 }
+    );
 
-    res.status(201).json({ mensagem: "Reserva criada com sucesso" });
-
+    res.status(201).json({ mensagem: "Reserva criada com sucesso!" });
   } catch (err) {
     console.error("❌ Erro ao criar reserva:", err.message);
-    res.status(500).json({ erro: "Erro interno ao criar reserva" });
+    res.status(500).json({ erro: "Erro interno ao criar reserva." });
   }
 });
 
@@ -110,36 +133,46 @@ app.delete("/reservas/:id", async (req, res) => {
   try {
     const reservaId = req.params.id;
 
-    // Busca a reserva para saber o restaurante
-    const [reservas] = await db.query("SELECT * FROM reservas WHERE id=?", [reservaId]);
-    if (reservas.length === 0) return res.status(404).json({ erro: "Reserva não encontrada" });
+    // Busca reserva existente
+    const [reservas] = await db.query("SELECT * FROM reservas WHERE id = ?", [
+      reservaId,
+    ]);
+    if (reservas.length === 0)
+      return res.status(404).json({ erro: "Reserva não encontrada." });
 
     const reserva = reservas[0];
 
-    // Exclui a reserva
-    await db.query("DELETE FROM reservas WHERE id=?", [reservaId]);
+    // Exclui reserva
+    await db.query("DELETE FROM reservas WHERE id = ?", [reservaId]);
 
-    // Recupera o restaurante
-    const restauranteResp = await axios.get(${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}).catch(() => null);
+    // Libera mesa no restaurante
+    const restauranteResp = await axios
+      .get(`${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}`)
+      .catch(() => null);
+
     const restaurante = restauranteResp?.data;
-
     if (restaurante) {
-      // Atualiza o número de mesas (+1)
-      await axios.patch(${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}/mesas, {
-        mesas_disponiveis: restaurante.mesas_disponiveis + 1
-      });
+      await axios.patch(
+        `${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}/mesas`,
+        { mesas_disponiveis: restaurante.mesas_disponiveis + 1 }
+      );
     }
 
-    res.json({ mensagem: "Reserva cancelada e mesa liberada" });
-
+    res.json({ mensagem: "Reserva cancelada e mesa liberada." });
   } catch (err) {
     console.error("❌ Erro ao cancelar reserva:", err.message);
-    res.status(500).json({ erro: "Erro interno ao cancelar reserva" });
+    res.status(500).json({ erro: "Erro interno ao cancelar reserva." });
   }
 });
 
-// Health check
+// Rota raiz e health check
+
+app.get("/", (req, res) => res.send("✅ Serviço de Reservas ativo e rodando!"));
+
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
+// Inicialização do servidor
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(🚀 Serviço de Reservas rodando na porta ${PORT}));
+app.listen(PORT, () =>
+  console.log(`Serviço de Reservas rodando na porta ${PORT}`)
+);

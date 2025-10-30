@@ -6,9 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ===============================================================
-// ⚙️ Configuração do banco (variáveis de ambiente da AWS)
-// ===============================================================
+// Configuração do banco (variáveis de ambiente da AWS)
 const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -18,9 +16,7 @@ const dbConfig = {
 
 let db;
 
-// ===============================================================
-// 🔌 Conexão com o banco e criação da tabela
-// ===============================================================
+// Conexão com o banco e criação da tabela
 async function connectDatabase() {
   try {
     db = await mysql.createPool(dbConfig);
@@ -34,29 +30,46 @@ async function connectDatabase() {
 
 async function criarTabelaClientes() {
   try {
+    // Cria tabela se não existir
     await db.query(`
       CREATE TABLE IF NOT EXISTS clientes (
         id INT AUTO_INCREMENT PRIMARY KEY,
         nome VARCHAR(100) NOT NULL,
-        email VARCHAR(100) NOT NULL,
+        cpf VARCHAR(14) UNIQUE,
+        email VARCHAR(100),
         telefone VARCHAR(20)
       );
     `);
     console.log("✅ Tabela 'clientes' pronta para uso.");
+
+    // Garante que o campo CPF exista (caso tabela antiga)
+    const [columns] = await db.query("SHOW COLUMNS FROM clientes LIKE 'cpf'");
+    if (columns.length === 0) {
+      await db.query("ALTER TABLE clientes ADD COLUMN cpf VARCHAR(14) UNIQUE;");
+      console.log("🧩 Coluna 'cpf' adicionada à tabela clientes.");
+    }
   } catch (err) {
-    console.error("❌ Erro ao criar tabela 'clientes':", err);
+    console.error("❌ Erro ao criar/verificar tabela 'clientes':", err);
   }
 }
 
 connectDatabase();
 
-// ===============================================================
-// 👤 CRUD de Clientes
-// ===============================================================
-
 // Listar todos os clientes
 app.get("/clientes", async (req, res) => {
   try {
+    // 🔍 Se houver ?cpf= no parâmetro, busca apenas esse cliente
+    const { cpf } = req.query;
+
+    if (cpf) {
+      const [rows] = await db.query("SELECT * FROM clientes WHERE cpf = ?", [
+        cpf,
+      ]);
+      if (rows.length === 0)
+        return res.status(404).json({ erro: "Cliente não encontrado" });
+      return res.json(rows);
+    }
+
     const [rows] = await db.query("SELECT * FROM clientes");
     res.json(rows);
   } catch (err) {
@@ -83,13 +96,21 @@ app.get("/clientes/:id", async (req, res) => {
 // Cadastrar novo cliente
 app.post("/clientes", async (req, res) => {
   try {
-    const { nome, email, telefone } = req.body;
-    if (!nome || !email)
-      return res.status(400).json({ erro: "Nome e e-mail são obrigatórios" });
+    const { nome, cpf, email, telefone } = req.body;
+
+    if (!nome || !cpf)
+      return res.status(400).json({ erro: "Nome e CPF são obrigatórios" });
+
+    // Evita duplicação de CPF
+    const [existe] = await db.query("SELECT id FROM clientes WHERE cpf = ?", [
+      cpf,
+    ]);
+    if (existe.length > 0)
+      return res.status(400).json({ erro: "CPF já cadastrado" });
 
     await db.query(
-      "INSERT INTO clientes (nome, email, telefone) VALUES (?, ?, ?)",
-      [nome, email, telefone]
+      "INSERT INTO clientes (nome, cpf, email, telefone) VALUES (?, ?, ?, ?)",
+      [nome, cpf, email, telefone]
     );
     res.status(201).json({ mensagem: "Cliente cadastrado com sucesso" });
   } catch (err) {
@@ -101,10 +122,10 @@ app.post("/clientes", async (req, res) => {
 // Atualizar cliente existente
 app.put("/clientes/:id", async (req, res) => {
   try {
-    const { nome, email, telefone } = req.body;
+    const { nome, cpf, email, telefone } = req.body;
     await db.query(
-      "UPDATE clientes SET nome=?, email=?, telefone=? WHERE id=?",
-      [nome, email, telefone, req.params.id]
+      "UPDATE clientes SET nome=?, cpf=?, email=?, telefone=? WHERE id=?",
+      [nome, cpf, email, telefone, req.params.id]
     );
     res.json({ mensagem: "Cliente atualizado com sucesso" });
   } catch (err) {
@@ -124,11 +145,13 @@ app.delete("/clientes/:id", async (req, res) => {
   }
 });
 
+// Rotas de status e health check
 app.get("/", (req, res) => res.send("✅ Serviço de Clientes ativo e rodando!"));
 
-// 🔍 Health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-// 🚀 Inicialização do servidor
+// Inicialização do servidor
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`Serviço de Clientes rodando na porta ${PORT}`)
+);
