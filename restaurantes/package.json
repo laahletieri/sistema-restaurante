@@ -1,17 +1,14 @@
 {
   "name": "restaurantes",
   "version": "1.0.0",
-  "description": "Serviço de restaurantes - sistema de reservas",
+  "description": "Serviço de restaurantes integrado com o RDS MySQL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
+    "express": "^4.19.2",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "mysql2": "^3.15.1"
   }
 }
