@@ -133,7 +133,7 @@ app.delete("/restaurantes/:id", async (req, res) => {
   }
 });
 
-// --------------------- SERVIDOR ---------------------
+// Inicia servidor
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () =>
   console.log(`🚀 Serviço de Restaurantes rodando na porta ${PORT}`)
