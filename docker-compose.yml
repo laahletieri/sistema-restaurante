@@ -12,5 +12,23 @@ services:
       - "3001:3001"
     environment:
       - CLIENTES_URL=http://clientes:3000
+      - REPLICACAO_URL=http://replicacao:3002
     depends_on:
       - clientes
+
+  replicacao:
+    build: ./replicacao
+    ports:
+      - "3002:3002"
+    environment:
+      - DB_PRINCIPAL_HOST=${DB_HOST}
+      - DB_PRINCIPAL_USER=${DB_USER}
+      - DB_PRINCIPAL_PASS=${DB_PASS}
+      - DB_PRINCIPAL_NAME=${DB_NAME}
+      - DB_REPLICA_HOST=${DB_REPLICA_HOST:-${DB_HOST}}
+      - DB_REPLICA_USER=${DB_REPLICA_USER:-${DB_USER}}
+      - DB_REPLICA_PASS=${DB_REPLICA_PASS:-${DB_PASS}}
+      - DB_REPLICA_NAME=${DB_REPLICA_NAME:-${DB_NAME}_replica}
+      - INTERVALO_REPLICACAO=30000
+    depends_on:
+      - reservas

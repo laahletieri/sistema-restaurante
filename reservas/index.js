@@ -56,6 +56,8 @@ const CLIENTES_URL =
 const RESTAURANTES_URL =
   process.env.RESTAURANTES_URL ||
   "http://restaurantes-env.eba-ji6s7zmy.sa-east-1.elasticbeanstalk.com";
+const REPLICACAO_URL =
+  process.env.REPLICACAO_URL || "http://localhost:3002";
 
 // ENDPOINTS DE RESERVAS
 
@@ -109,11 +111,13 @@ app.post("/reservas", async (req, res) => {
     }
 
     // Cria a reserva
-    await db.query(
+    const [result] = await db.query(
       `INSERT INTO reservas (cliente_id, restaurante_id, data_reserva, horario, numero_pessoas)
        VALUES (?, ?, ?, ?, ?)`,
       [cliente.id, restaurante_id, data_reserva, horario, numero_pessoas || 1]
     );
+
+    const reservaId = result.insertId;
 
     // Atualiza mesas do restaurante
     await axios.patch(
@@ -121,7 +125,15 @@ app.post("/reservas", async (req, res) => {
       { mesas_disponiveis: restaurante.mesas_disponiveis - 1 }
     );
 
-    res.status(201).json({ mensagem: "Reserva criada com sucesso!" });
+    // Notifica serviço de replicação (assíncrono, não bloqueia a resposta)
+    axios
+      .post(`${REPLICACAO_URL}/replicacao/reserva/${reservaId}`)
+      .then(() => console.log(`📡 Reserva #${reservaId} enviada para replicação`))
+      .catch((err) =>
+        console.log(`⚠️ Falha ao notificar replicação (será replicada via polling):`, err.message)
+      );
+
+    res.status(201).json({ mensagem: "Reserva criada com sucesso!", id: reservaId });
   } catch (err) {
     console.error("❌ Erro ao criar reserva:", err.message);
     res.status(500).json({ erro: "Erro interno ao criar reserva." });

@@ -1,0 +1,16 @@
+{
+  "name": "replicacao",
+  "version": "1.0.0",
+  "description": "Serviço de replicação de dados para reservas",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "mysql2": "^3.15.1",
+    "axios": "^1.7.2"
+  }
+}
+
