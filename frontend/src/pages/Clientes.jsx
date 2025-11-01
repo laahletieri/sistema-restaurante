@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 
 export default function Clientes() {
-  const API_CLIENTES =
-    "http://clientes-env.eba-ytjkzypy.sa-east-1.elasticbeanstalk.com";
+  const API_CLIENTES = import.meta.env.VITE_CLIENTES_API;
+
   const [clientes, setClientes] = useState([]);
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
     nome: "",
     cpf: "",
@@ -12,9 +13,7 @@ export default function Clientes() {
     telefone: "",
   });
 
-  // =====================================================
-  // 🔹 Carregar lista de clientes ao iniciar
-  // =====================================================
+  // Carregar lista de clientes ao iniciar
   useEffect(() => {
     carregarClientes();
   }, []);
@@ -25,28 +24,50 @@ export default function Clientes() {
       setClientes(res.data);
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
+      alert("Falha ao conectar com o serviço de clientes.");
     }
   }
 
-  // =====================================================
-  // 🟢 Cadastrar cliente
-  // =====================================================
+  // Cadastrar ou editar cliente
   async function handleSubmit(e) {
     e.preventDefault();
     try {
-      await axios.post(`${API_CLIENTES}/clientes`, form);
-      alert("Cliente cadastrado com sucesso!");
+      if (editing) {
+        await axios.put(`${API_CLIENTES}/clientes/${editing}`, form); // usa PUT
+        alert("Cliente atualizado com sucesso!");
+      } else {
+        await axios.post(`${API_CLIENTES}/clientes`, form);
+        alert("Cliente cadastrado com sucesso!");
+      }
+
       setForm({ nome: "", cpf: "", email: "", telefone: "" });
+      setEditing(null);
       carregarClientes();
     } catch (err) {
-      console.error("Erro ao cadastrar cliente:", err);
-      alert("Erro ao cadastrar cliente");
+      console.error("Erro ao salvar cliente:", err);
+      alert("Erro ao salvar cliente.");
     }
   }
 
-  // =====================================================
-  // 🔴 Excluir cliente
-  // =====================================================
+  // Iniciar edição
+  function iniciarEdicao(cliente) {
+    setEditing(cliente.id);
+    setForm({
+      nome: cliente.nome,
+      cpf: cliente.cpf,
+      email: cliente.email,
+      telefone: cliente.telefone,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Cancelar edição
+  function cancelarEdicao() {
+    setEditing(null);
+    setForm({ nome: "", cpf: "", email: "", telefone: "" });
+  }
+
+  // Excluir cliente
   async function excluirCliente(id) {
     if (!window.confirm("Deseja realmente excluir este cliente?")) return;
     try {
@@ -58,9 +79,6 @@ export default function Clientes() {
     }
   }
 
-  // =====================================================
-  // 🧾 Renderização
-  // =====================================================
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6 text-center">👤 Clientes</h1>
@@ -70,6 +88,10 @@ export default function Clientes() {
         onSubmit={handleSubmit}
         className="bg-white shadow-md rounded-lg p-6 mb-8 max-w-xl mx-auto"
       >
+        <h2 className="text-lg font-semibold mb-4 text-center">
+          {editing ? "✏️ Editar Cliente" : "➕ Novo Cliente"}
+        </h2>
+
         <div className="grid grid-cols-2 gap-3 mb-4">
           <input
             type="text"
@@ -106,12 +128,24 @@ export default function Clientes() {
           />
         </div>
 
-        <button
-          type="submit"
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded w-full"
-        >
-          Salvar Cliente
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded w-full"
+          >
+            {editing ? "Salvar Alterações" : "Salvar Cliente"}
+          </button>
+
+          {editing && (
+            <button
+              type="button"
+              onClick={cancelarEdicao}
+              className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded w-full"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
       </form>
 
       {/* Lista */}
@@ -128,12 +162,21 @@ export default function Clientes() {
                 | <strong>Email:</strong> {c.email || "—"} |{" "}
                 <strong>Telefone:</strong> {c.telefone || "—"}
               </span>
-              <button
-                onClick={() => excluirCliente(c.id)}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-              >
-                Excluir
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => iniciarEdicao(c)}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => excluirCliente(c.id)}
+                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                >
+                  Excluir
+                </button>
+              </div>
             </li>
           ))}
         </ul>

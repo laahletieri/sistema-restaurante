@@ -1,238 +1,241 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 
 export default function Reservas() {
-  const API_RESERVAS =
-    "http://reservas-env.eba-x63mbcgh.sa-east-1.elasticbeanstalk.com";
-  const API_CLIENTES =
-    "http://clientes-env.eba-ytjkzypy.sa-east-1.elasticbeanstalk.com";
-  const API_RESTAURANTES =
-    "http://restaurantes-env.eba-ji6s7zmy.sa-east-1.elasticbeanstalk.com";
+  const API_RESERVAS = import.meta.env.VITE_RESERVAS_API;
+  const API_CLIENTES = import.meta.env.VITE_CLIENTES_API;
+  const API_RESTAURANTES = import.meta.env.VITE_RESTAURANTES_API;
 
   const [reservas, setReservas] = useState([]);
   const [restaurantes, setRestaurantes] = useState([]);
-
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
-    id_restaurante: "",
+    nome: "",
+    cpf: "",
+    restaurante_id: "",
     data_reserva: "",
     horario: "",
     numero_pessoas: 1,
   });
 
-  // =====================================================
-  // 🧩 Funções auxiliares de CPF
-  // =====================================================
-  function limparCPF(cpf) {
-    return (cpf || "").replace(/\D/g, "");
-  }
-
-  function validarCPF(cpf) {
-    const c = limparCPF(cpf);
-    if (!/^\d{11}$/.test(c)) return false;
-    if (/^(\d)\1{10}$/.test(c)) return false;
-
-    const calcDig = (t) => {
-      let soma = 0;
-      for (let i = 0; i < t; i++) soma += parseInt(c.charAt(i)) * (t + 1 - i);
-      const d = 11 - (soma % 11);
-      return d >= 10 ? 0 : d;
-    };
-
-    const d1 = calcDig(9);
-    const d2 = calcDig(10);
-    return d1 === parseInt(c.charAt(9)) && d2 === parseInt(c.charAt(10));
-  }
-
-  // =====================================================
-  // 🔹 Carrega dados iniciais
-  // =====================================================
   useEffect(() => {
-    carregarReservas();
-    carregarRestaurantes();
+    carregarDados();
   }, []);
 
-  async function carregarReservas() {
+  async function carregarDados() {
     try {
-      const res = await axios.get(`${API_RESERVAS}/reservas`);
-      setReservas(res.data);
+      const [resReservas, resRestaurantes] = await Promise.all([
+        axios.get(`${API_RESERVAS}/reservas`),
+        axios.get(`${API_RESTAURANTES}/restaurantes`),
+      ]);
+
+      setReservas(resReservas.data);
+      setRestaurantes(resRestaurantes.data);
     } catch (err) {
-      console.error("Erro ao carregar reservas:", err);
+      console.error("Erro ao carregar dados:", err);
+      alert("Falha ao carregar dados das reservas.");
     }
   }
 
-  async function carregarRestaurantes() {
-    try {
-      const res = await axios.get(`${API_RESTAURANTES}/restaurantes`);
-      setRestaurantes(res.data);
-    } catch (err) {
-      console.error("Erro ao carregar restaurantes:", err);
-    }
-  }
-
-  // =====================================================
-  // 🟢 Criação de reserva
-  // =====================================================
   async function handleSubmit(e) {
     e.preventDefault();
 
-    const cpfLimpo = limparCPF(cpf);
-
-    // 🔍 Validação do CPF
-    if (!validarCPF(cpfLimpo)) {
-      alert("CPF inválido. Verifique e tente novamente.");
+    if (
+      !form.cpf ||
+      !form.restaurante_id ||
+      !form.data_reserva ||
+      !form.horario
+    ) {
+      alert("Preencha todos os campos obrigatórios!");
       return;
     }
 
     try {
-      // 🔍 Verifica se o cliente está cadastrado
-      const clienteRes = await axios.get(
-        `${API_CLIENTES}/clientes?cpf=${cpfLimpo}`
-      );
-      const cliente = Array.isArray(clienteRes.data)
-        ? clienteRes.data[0]
-        : clienteRes.data;
-
-      if (!cliente) {
-        alert(
-          "Cliente não encontrado. Cadastre o cliente antes de fazer a reserva."
-        );
-        return;
+      if (editing) {
+        await axios.put(`${API_RESERVAS}/reservas/${editing}`, form);
+        alert("Reserva atualizada com sucesso!");
+      } else {
+        await axios.post(`${API_RESERVAS}/reservas`, form);
+        alert("Reserva cadastrada com sucesso!");
       }
 
-      const novaReserva = {
-        id_cliente: cliente.id,
-        id_restaurante: form.id_restaurante,
-        data_reserva: form.data_reserva,
-        horario: form.horario,
-        numero_pessoas: form.numero_pessoas,
-      };
-
-      await axios.post(`${API_RESERVAS}/reservas`, novaReserva);
-      alert("Reserva criada com sucesso!");
-      carregarReservas();
-
-      // limpa o form
+      setEditing(null);
       setForm({
-        id_restaurante: "",
+        nome: "",
+        cpf: "",
+        restaurante_id: "",
         data_reserva: "",
         horario: "",
         numero_pessoas: 1,
       });
-      setNome("");
-      setCpf("");
+      carregarDados();
     } catch (err) {
-      console.error("Erro ao criar reserva:", err);
-      alert("Erro ao criar reserva. Verifique o console.");
+      console.error("Erro ao salvar reserva:", err);
+      alert(
+        err.response?.data?.erro ||
+          "Erro ao salvar reserva. Verifique se o cliente existe."
+      );
     }
   }
 
-  // =====================================================
-  // 🔴 Excluir reserva
-  // =====================================================
+  function iniciarEdicao(reserva) {
+    setEditing(reserva.id);
+    setForm({
+      nome: reserva.nome_cliente || "",
+      cpf: reserva.cpf || "",
+      restaurante_id: reserva.restaurante_id,
+      data_reserva: reserva.data_reserva
+        ? reserva.data_reserva.split("T")[0]
+        : "",
+      horario: reserva.horario || "",
+      numero_pessoas: reserva.numero_pessoas || 1,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelarEdicao() {
+    setEditing(null);
+    setForm({
+      nome: "",
+      cpf: "",
+      restaurante_id: "",
+      data_reserva: "",
+      horario: "",
+      numero_pessoas: 1,
+    });
+  }
+
   async function excluirReserva(id) {
     if (!window.confirm("Deseja realmente excluir esta reserva?")) return;
-
     try {
       await axios.delete(`${API_RESERVAS}/reservas/${id}`);
-      alert("Reserva excluída!");
-      carregarReservas();
+      alert("Reserva excluída com sucesso!");
+      carregarDados();
     } catch (err) {
       console.error("Erro ao excluir reserva:", err);
     }
   }
 
-  // =====================================================
-  // 🧾 Renderização
-  // =====================================================
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6 text-center">📅 Reservas</h1>
+      <h1 className="text-3xl font-bold text-blue-700 mb-4 text-center">
+        🗓️ Reservas
+      </h1>
 
-      {/* Formulário de criação */}
+      {/* Formulário */}
       <form
         onSubmit={handleSubmit}
-        className="bg-white shadow-md rounded-lg p-6 mb-8 max-w-xl mx-auto"
+        className="bg-white shadow-md rounded-lg p-6 mb-8 max-w-3xl mx-auto"
       >
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <input
-            type="text"
-            placeholder="Nome do cliente"
-            className="border p-2 rounded"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            required
-          />
-          <input
-            type="text"
-            placeholder="CPF do cliente"
-            className="border p-2 rounded"
-            value={cpf}
-            onChange={(e) => setCpf(e.target.value)}
-            required
-          />
+        <h2 className="text-xl font-semibold mb-4 text-center">
+          {editing ? "✏️ Editar Reserva" : "➕ Nova Reserva"}
+        </h2>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block font-medium mb-1">Nome do Cliente:</label>
+            <input
+              type="text"
+              placeholder="Digite o nome do cliente"
+              className="border p-2 rounded w-full"
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">CPF do Cliente:</label>
+            <input
+              type="text"
+              placeholder="Digite o CPF (somente números)"
+              className="border p-2 rounded w-full"
+              value={form.cpf}
+              onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Restaurante:</label>
+            <select
+              className="border p-2 rounded w-full"
+              value={form.restaurante_id}
+              onChange={(e) =>
+                setForm({ ...form, restaurante_id: e.target.value })
+              }
+              required
+            >
+              <option value="">Selecione um restaurante</option>
+              {restaurantes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Número de Pessoas:</label>
+            <input
+              type="number"
+              min="1"
+              className="border p-2 rounded w-full"
+              value={form.numero_pessoas}
+              onChange={(e) =>
+                setForm({ ...form, numero_pessoas: e.target.value })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Data:</label>
+            <input
+              type="date"
+              className="border p-2 rounded w-full"
+              value={form.data_reserva}
+              onChange={(e) =>
+                setForm({ ...form, data_reserva: e.target.value })
+              }
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block font-medium mb-1">Hora:</label>
+            <input
+              type="time"
+              className="border p-2 rounded w-full"
+              value={form.horario}
+              onChange={(e) => setForm({ ...form, horario: e.target.value })}
+              required
+            />
+          </div>
         </div>
 
-        <div className="mb-4">
-          <select
-            className="border p-2 rounded w-full"
-            value={form.id_restaurante}
-            onChange={(e) =>
-              setForm({ ...form, id_restaurante: e.target.value })
-            }
-            required
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded w-full"
           >
-            <option value="">Selecione um restaurante</option>
-            {restaurantes.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nome}
-              </option>
-            ))}
-          </select>
-        </div>
+            {editing ? "Salvar Alterações" : "Cadastrar Reserva"}
+          </button>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <input
-            type="date"
-            className="border p-2 rounded"
-            value={form.data_reserva}
-            onChange={(e) => setForm({ ...form, data_reserva: e.target.value })}
-            required
-          />
-          <input
-            type="time"
-            className="border p-2 rounded"
-            value={form.horario}
-            onChange={(e) => setForm({ ...form, horario: e.target.value })}
-            required
-          />
+          {editing && (
+            <button
+              type="button"
+              onClick={cancelarEdicao}
+              className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded w-full"
+            >
+              Cancelar
+            </button>
+          )}
         </div>
-
-        <div className="mb-4">
-          <input
-            type="number"
-            min="1"
-            className="border p-2 rounded w-full"
-            value={form.numero_pessoas}
-            onChange={(e) =>
-              setForm({ ...form, numero_pessoas: e.target.value })
-            }
-            required
-          />
-        </div>
-
-        <button
-          type="submit"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded w-full"
-        >
-          Criar Reserva
-        </button>
       </form>
 
-      {/* Lista de reservas */}
-      <div className="max-w-3xl mx-auto">
-        <h2 className="text-lg font-semibold mb-2">Reservas cadastradas</h2>
+      {/* Lista */}
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-lg font-semibold mb-3">Reservas cadastradas</h2>
         <ul className="space-y-3">
           {reservas.map((r) => (
             <li
@@ -240,17 +243,30 @@ export default function Reservas() {
               className="flex justify-between items-center bg-gray-50 border p-3 rounded-lg shadow-sm"
             >
               <span>
-                <strong>Cliente:</strong> {r.id_cliente} |{" "}
-                <strong>Restaurante:</strong> {r.id_restaurante} |{" "}
-                <strong>Data:</strong> {r.data_reserva} | <strong>Hora:</strong>{" "}
-                {r.horario}
+                <strong>Cliente:</strong> {r.nome_cliente} |{" "}
+                <strong>Restaurante:</strong> {r.nome_restaurante} |{" "}
+                <strong>Data:</strong>{" "}
+                {r.data_reserva
+                  ? new Date(r.data_reserva).toLocaleDateString("pt-BR")
+                  : "—"}{" "}
+                | <strong>Hora:</strong> {r.horario || "—"} |{" "}
+                <strong>Pessoas:</strong> {r.numero_pessoas || 1}
               </span>
-              <button
-                onClick={() => excluirReserva(r.id)}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-              >
-                Excluir
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => iniciarEdicao(r)}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => excluirReserva(r.id)}
+                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                >
+                  Excluir
+                </button>
+              </div>
             </li>
           ))}
         </ul>
