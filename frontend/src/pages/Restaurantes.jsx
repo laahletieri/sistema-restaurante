@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { getServiceUrl } from "../services/nameService";
 
 export default function Restaurantes() {
-  const API_URL = import.meta.env.VITE_RESTAURANTES_API;
-
   const [restaurantes, setRestaurantes] = useState([]);
   const [form, setForm] = useState({
     nome: "",
@@ -20,7 +19,8 @@ export default function Restaurantes() {
 
   const carregarRestaurantes = async () => {
     try {
-      const { data } = await axios.get(`${API_URL}/restaurantes`);
+      const baseUrl = await getServiceUrl("restaurantes");
+      const { data } = await axios.get(`${baseUrl}/restaurantes`);
       setRestaurantes(data);
     } catch (err) {
       console.error("Erro ao carregar restaurantes:", err);
@@ -35,11 +35,13 @@ export default function Restaurantes() {
     }
 
     try {
+      const baseUrl = await getServiceUrl("restaurantes");
+
       if (editId) {
-        await axios.put(`${API_URL}/restaurantes/${editId}`, form);
+        await axios.put(`${baseUrl}/restaurantes/${editId}`, form);
         alert("Restaurante atualizado com sucesso!");
       } else {
-        await axios.post(`${API_URL}/restaurantes`, form);
+        await axios.post(`${baseUrl}/restaurantes`, form);
         alert("Restaurante cadastrado com sucesso!");
       }
 
@@ -78,17 +80,19 @@ export default function Restaurantes() {
   const excluir = async (id) => {
     if (window.confirm("Deseja excluir este restaurante?")) {
       try {
-        await axios.delete(`${API_URL}/restaurantes/${id}`);
+        const baseUrl = await getServiceUrl("restaurantes");
+        await axios.delete(`${baseUrl}/restaurantes/${id}`);
         carregarRestaurantes();
       } catch (err) {
         console.error("Erro ao excluir restaurante:", err);
+        alert("Erro ao excluir restaurante.");
       }
     }
   };
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold text-green-700 mb-4 text-center">
+      <h1 className="text-3xl font-bold text-slate-800 mb-4 text-center">
         🍽️ Restaurantes
       </h1>
 
@@ -97,7 +101,6 @@ export default function Restaurantes() {
           {editId ? "✏️ Editar Restaurante" : "➕ Novo Restaurante"}
         </h2>
 
-        {/* Campos de formulário com labels explicativas */}
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block font-medium mb-1">Nome:</label>
@@ -166,7 +169,7 @@ export default function Restaurantes() {
         <div className="flex gap-3">
           <button
             onClick={salvarRestaurante}
-            className="bg-green-600 text-white px-4 py-2 rounded w-full hover:bg-green-700"
+            className="bg-emerald-600 text-white px-4 py-2 rounded w-full hover:bg-emerald-700"
           >
             {editId ? "Salvar Alterações" : "Cadastrar Restaurante"}
           </button>
@@ -184,7 +187,7 @@ export default function Restaurantes() {
 
       <div className="max-w-5xl mx-auto">
         <table className="w-full border shadow-md rounded-lg">
-          <thead className="bg-green-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="p-2 border">ID</th>
               <th className="p-2 border">Nome</th>

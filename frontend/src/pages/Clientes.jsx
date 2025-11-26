@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { getServiceUrl } from "../services/nameService";
 
 export default function Clientes() {
-  const API_CLIENTES = import.meta.env.VITE_CLIENTES_API;
-
   const [clientes, setClientes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
@@ -13,30 +12,34 @@ export default function Clientes() {
     telefone: "",
   });
 
-  // Carregar lista de clientes ao iniciar
+  // Carregar lista ao entrar
   useEffect(() => {
     carregarClientes();
   }, []);
 
   async function carregarClientes() {
     try {
-      const res = await axios.get(`${API_CLIENTES}/clientes`);
+      const baseUrl = await getServiceUrl("clientes");
+      const res = await axios.get(`${baseUrl}/clientes`);
       setClientes(res.data);
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
-      alert("Falha ao conectar com o serviço de clientes.");
+      alert("❌ Falha ao conectar com o serviço de clientes.");
     }
   }
 
-  // Cadastrar ou editar cliente
+  // Salvar (novo ou edição)
   async function handleSubmit(e) {
     e.preventDefault();
+
     try {
+      const baseUrl = await getServiceUrl("clientes");
+
       if (editing) {
-        await axios.put(`${API_CLIENTES}/clientes/${editing}`, form); // usa PUT
+        await axios.put(`${baseUrl}/clientes/${editing}`, form);
         alert("Cliente atualizado com sucesso!");
       } else {
-        await axios.post(`${API_CLIENTES}/clientes`, form);
+        await axios.post(`${baseUrl}/clientes`, form);
         alert("Cliente cadastrado com sucesso!");
       }
 
@@ -45,7 +48,7 @@ export default function Clientes() {
       carregarClientes();
     } catch (err) {
       console.error("Erro ao salvar cliente:", err);
-      alert("Erro ao salvar cliente.");
+      alert("❌ Erro ao salvar cliente.");
     }
   }
 
@@ -61,21 +64,23 @@ export default function Clientes() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Cancelar edição
   function cancelarEdicao() {
     setEditing(null);
     setForm({ nome: "", cpf: "", email: "", telefone: "" });
   }
 
-  // Excluir cliente
+  // Excluir
   async function excluirCliente(id) {
     if (!window.confirm("Deseja realmente excluir este cliente?")) return;
+
     try {
-      await axios.delete(`${API_CLIENTES}/clientes/${id}`);
+      const baseUrl = await getServiceUrl("clientes");
+      await axios.delete(`${baseUrl}/clientes/${id}`);
       alert("Cliente excluído com sucesso!");
       carregarClientes();
     } catch (err) {
       console.error("Erro ao excluir cliente:", err);
+      alert("❌ Falha ao excluir cliente.");
     }
   }
 
@@ -151,6 +156,7 @@ export default function Clientes() {
       {/* Lista */}
       <div className="max-w-3xl mx-auto">
         <h2 className="text-lg font-semibold mb-2">Clientes cadastrados</h2>
+
         <ul className="space-y-3">
           {clientes.map((c) => (
             <li

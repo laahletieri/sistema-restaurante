@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { getServiceUrl } from "../services/nameService";
 
 export default function Reservas() {
-  const API_RESERVAS = import.meta.env.VITE_RESERVAS_API;
-  const API_CLIENTES = import.meta.env.VITE_CLIENTES_API;
-  const API_RESTAURANTES = import.meta.env.VITE_RESTAURANTES_API;
-
   const [reservas, setReservas] = useState([]);
   const [restaurantes, setRestaurantes] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -24,9 +21,15 @@ export default function Reservas() {
 
   async function carregarDados() {
     try {
+      // resolve URLs via serviço de nomeação
+      const [reservasBaseUrl, restaurantesBaseUrl] = await Promise.all([
+        getServiceUrl("reservas"),
+        getServiceUrl("restaurantes"),
+      ]);
+
       const [resReservas, resRestaurantes] = await Promise.all([
-        axios.get(`${API_RESERVAS}/reservas`),
-        axios.get(`${API_RESTAURANTES}/restaurantes`),
+        axios.get(`${reservasBaseUrl}/reservas`),
+        axios.get(`${restaurantesBaseUrl}/restaurantes`),
       ]);
 
       setReservas(resReservas.data);
@@ -51,11 +54,13 @@ export default function Reservas() {
     }
 
     try {
+      const reservasBaseUrl = await getServiceUrl("reservas");
+
       if (editing) {
-        await axios.put(`${API_RESERVAS}/reservas/${editing}`, form);
+        await axios.put(`${reservasBaseUrl}/reservas/${editing}`, form);
         alert("Reserva atualizada com sucesso!");
       } else {
-        await axios.post(`${API_RESERVAS}/reservas`, form);
+        await axios.post(`${reservasBaseUrl}/reservas`, form);
         alert("Reserva cadastrada com sucesso!");
       }
 
@@ -107,18 +112,21 @@ export default function Reservas() {
 
   async function excluirReserva(id) {
     if (!window.confirm("Deseja realmente excluir esta reserva?")) return;
+
     try {
-      await axios.delete(`${API_RESERVAS}/reservas/${id}`);
+      const reservasBaseUrl = await getServiceUrl("reservas");
+      await axios.delete(`${reservasBaseUrl}/reservas/${id}`);
       alert("Reserva excluída com sucesso!");
       carregarDados();
     } catch (err) {
       console.error("Erro ao excluir reserva:", err);
+      alert("Erro ao excluir reserva.");
     }
   }
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold text-blue-700 mb-4 text-center">
+      <h1 className="text-3xl font-bold text-slate-800 mb-4 text-center">
         🗓️ Reservas
       </h1>
 

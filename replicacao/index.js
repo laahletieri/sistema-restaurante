@@ -120,7 +120,8 @@ async function buscarNovasReservas() {
     const [controle] = await dbReplica.query(
       "SELECT ultima_reserva_id FROM controle_replicacao ORDER BY id DESC LIMIT 1"
     );
-    const ultimoIdReplicado = controle.length > 0 ? controle[0].ultima_reserva_id : 0;
+    const ultimoIdReplicado =
+      controle.length > 0 ? controle[0].ultima_reserva_id : 0;
 
     // Busca reservas novas no banco principal
     const [reservas] = await dbPrincipal.query(
@@ -211,7 +212,9 @@ async function processarReplicacao() {
       return { replicadas: 0, total: 0 };
     }
 
-    console.log(`🔄 Encontradas ${novasReservas.length} nova(s) reserva(s) para replicar...`);
+    console.log(
+      `🔄 Encontradas ${novasReservas.length} nova(s) reserva(s) para replicar...`
+    );
 
     let replicadas = 0;
     for (const reserva of novasReservas) {
@@ -221,7 +224,9 @@ async function processarReplicacao() {
       }
     }
 
-    console.log(`✅ Replicação concluída: ${replicadas}/${novasReservas.length} reserva(s) replicada(s).`);
+    console.log(
+      `✅ Replicação concluída: ${replicadas}/${novasReservas.length} reserva(s) replicada(s).`
+    );
 
     return { replicadas, total: novasReservas.length };
   } catch (err) {
@@ -241,7 +246,9 @@ async function replicarReservaPorId(reservaId) {
     );
 
     if (reservas.length === 0) {
-      console.log(`⚠️ Reserva #${reservaId} não encontrada no banco principal.`);
+      console.log(
+        `⚠️ Reserva #${reservaId} não encontrada no banco principal.`
+      );
       return false;
     }
 
@@ -256,12 +263,13 @@ async function replicarReservaPorId(reservaId) {
 // API ENDPOINTS
 // ============================================================
 
-// Endpoint para forçar sincronização manual
-app.post("/replicacao/sincronizar", async (req, res) => {
+// Endpoint para forçar sincronização manual (aceita GET, POST, etc.)
+app.all("/replicacao/sincronizar", async (req, res) => {
   try {
     const resultado = await processarReplicacao();
     res.json({
       mensagem: "Sincronização concluída",
+      metodo: req.method,
       replicadas: resultado.replicadas,
       total: resultado.total,
     });
@@ -280,7 +288,9 @@ app.post("/replicacao/reserva/:id", async (req, res) => {
     if (sucesso) {
       res.json({ mensagem: `Reserva #${reservaId} replicada com sucesso` });
     } else {
-      res.status(404).json({ erro: "Reserva não encontrada ou erro na replicação" });
+      res
+        .status(404)
+        .json({ erro: "Reserva não encontrada ou erro na replicação" });
     }
   } catch (err) {
     console.error("❌ Erro ao replicar reserva:", err);
@@ -342,14 +352,18 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 connectDatabases();
 
 // Intervalo de sincronização automática (padrão: 30 segundos)
-const INTERVALO_REPLICACAO = parseInt(process.env.INTERVALO_REPLICACAO || "30000");
+const INTERVALO_REPLICACAO = parseInt(
+  process.env.INTERVALO_REPLICACAO || "30000"
+);
 
 // Inicia sincronização automática periódica
 setInterval(async () => {
   await processarReplicacao();
 }, INTERVALO_REPLICACAO);
 
-console.log(`🔄 Replicação automática iniciada (intervalo: ${INTERVALO_REPLICACAO}ms)`);
+console.log(
+  `🔄 Replicação automática iniciada (intervalo: ${INTERVALO_REPLICACAO}ms)`
+);
 
 // Primeira sincronização ao iniciar
 setTimeout(async () => {
@@ -362,6 +376,7 @@ const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`🚀 Serviço de Replicação rodando na porta ${PORT}`);
   console.log(`📡 Monitorando reservas do banco principal...`);
-  console.log(`🔄 Sincronização automática a cada ${INTERVALO_REPLICACAO / 1000}s`);
+  console.log(
+    `🔄 Sincronização automática a cada ${INTERVALO_REPLICACAO / 1000}s`
+  );
 });
-
