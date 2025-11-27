@@ -5,8 +5,18 @@ const cors = require("cors");
 const Bully = require("./src/bully");
 const https = require("https");
 const axios = require("axios");
+const {
+  MetricsCollector,
+  createLoggingMiddleware,
+  createMetricsEndpoint,
+} = require("./src/metrics");
 
 const app = express();
+
+// ===================== CONFIGURAÇÃO DE MÉTRICAS E LOGGING =====================
+const metricsCollector = new MetricsCollector("restaurantes");
+app.use(createLoggingMiddleware(metricsCollector));
+
 app.use(cors());
 app.use(express.json());
 
@@ -203,6 +213,9 @@ app.get("/", (req, res) =>
   res.send("Serviço de Restaurantes ativo e rodando!")
 );
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// ===================== ENDPOINT DE MÉTRICAS =====================
+app.get("/metrics", createMetricsEndpoint(metricsCollector));
 
 // Start server
 const PORT = process.env.PORT || 8080;

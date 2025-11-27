@@ -5,8 +5,18 @@ const cors = require("cors");
 const axios = require("axios");
 const Bully = require("./src/bully");
 const https = require("https");
+const {
+  MetricsCollector,
+  createLoggingMiddleware,
+  createMetricsEndpoint,
+} = require("./src/metrics");
 
 const app = express();
+
+// ===================== CONFIGURAÇÃO DE MÉTRICAS E LOGGING =====================
+const metricsCollector = new MetricsCollector("reservas");
+app.use(createLoggingMiddleware(metricsCollector));
+
 app.use(cors());
 app.use(express.json());
 
@@ -98,6 +108,95 @@ const bully = new Bully({
 });
 
 bully.setSelfUrl(SELF_URL);
+
+// ===================== FUNÇÕES AUXILIARES DE LOGGING =====================
+/**
+ * Log estruturado para criação de reservas
+ */
+function logReservaCriada(reservaData) {
+  const logEntry = {
+    event: "RESERVA_CRIADA",
+    timestamp: new Date().toISOString(),
+    reserva_id: reservaData.id,
+    cliente_id: reservaData.cliente_id,
+    cliente_nome: reservaData.cliente_nome,
+    restaurante_id: reservaData.restaurante_id,
+    restaurante_nome: reservaData.restaurante_nome,
+    data_reserva: reservaData.data_reserva,
+    horario: reservaData.horario,
+    numero_pessoas: reservaData.numero_pessoas,
+    mesas_antes: reservaData.mesas_antes,
+    mesas_depois: reservaData.mesas_depois,
+    node_id: SELF_ID,
+    usado_lock: reservaData.usado_lock || false,
+  };
+  console.log("[EVENTO_CRITICO]", JSON.stringify(logEntry, null, 2));
+}
+
+/**
+ * Log estruturado para falha no serviço de clientes
+ */
+function logFalhaServicoClientes(cpf, error, url) {
+  const logEntry = {
+    event: "FALHA_SERVICO_CLIENTES",
+    timestamp: new Date().toISOString(),
+    severity: "ERROR",
+    cpf: cpf,
+    service_url: url || CLIENTES_URL,
+    error_type: error?.code || "UNKNOWN",
+    error_message: error?.message || String(error),
+    error_response: error?.response?.data || null,
+    error_status: error?.response?.status || null,
+    node_id: SELF_ID,
+    contexto: "CRIACAO_RESERVA",
+  };
+  console.error("[FALHA_SERVICO]", JSON.stringify(logEntry, null, 2));
+}
+
+/**
+ * Log estruturado para falha no serviço de restaurantes
+ */
+function logFalhaServicoRestaurantes(restaurante_id, error, url, contexto = "CRIACAO_RESERVA") {
+  const logEntry = {
+    event: "FALHA_SERVICO_RESTAURANTES",
+    timestamp: new Date().toISOString(),
+    severity: "ERROR",
+    restaurante_id: restaurante_id,
+    service_url: url || RESTAURANTES_URL,
+    error_type: error?.code || "UNKNOWN",
+    error_message: error?.message || String(error),
+    error_response: error?.response?.data || null,
+    error_status: error?.response?.status || null,
+    node_id: SELF_ID,
+    contexto: contexto,
+  };
+  console.error("[FALHA_SERVICO]", JSON.stringify(logEntry, null, 2));
+}
+
+/**
+ * Log estruturado para falha na criação de reserva
+ */
+function logFalhaCriacaoReserva(dados, motivo, erro = null) {
+  const logEntry = {
+    event: "FALHA_CRIACAO_RESERVA",
+    timestamp: new Date().toISOString(),
+    severity: "ERROR",
+    motivo: motivo,
+    dados_requisicao: {
+      cpf: dados.cpf,
+      restaurante_id: dados.restaurante_id,
+      data_reserva: dados.data_reserva,
+      horario: dados.horario,
+      numero_pessoas: dados.numero_pessoas,
+    },
+    error: erro ? {
+      message: erro.message,
+      code: erro.code,
+    } : null,
+    node_id: SELF_ID,
+  };
+  console.error("[FALHA_RESERVA]", JSON.stringify(logEntry, null, 2));
+}
 
 // ===================== LOCK SIMPLES (EXCLUSÃO MÚTUA) =====================
 let recursoEmUso = false;
@@ -245,6 +344,8 @@ app.post("/reservas", async (req, res) => {
     const clienteResp = await axios
       .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`)
       .catch((err) => {
+        // Log estruturado de falha no serviço de clientes
+        logFalhaServicoClientes(cpf, err, CLIENTES_URL);
         console.error(
           "[RESERVAS][POST] Erro ao chamar serviço de clientes:",
           err.message
@@ -253,6 +354,15 @@ app.post("/reservas", async (req, res) => {
       });
 
     if (!clienteResp || !clienteResp.data) {
+      const motivo = !clienteResp 
+        ? "Serviço de clientes indisponível ou timeout" 
+        : "Cliente não encontrado para o CPF informado";
+      
+      logFalhaCriacaoReserva(
+        { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
+        motivo
+      );
+      
       console.warn(
         "[RESERVAS][POST] Cliente não encontrado para o CPF informado."
       );
@@ -270,6 +380,8 @@ app.post("/reservas", async (req, res) => {
     const restauranteResp = await axios
       .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
       .catch((err) => {
+        // Log estruturado de falha no serviço de restaurantes
+        logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "CRIACAO_RESERVA");
         console.error(
           "[RESERVAS][POST] Erro ao chamar serviço de restaurantes:",
           err.message
@@ -279,6 +391,17 @@ app.post("/reservas", async (req, res) => {
 
     const restaurante = restauranteResp?.data;
     if (!restaurante || restaurante.mesas_disponiveis <= 0) {
+      const motivo = !restauranteResp
+        ? "Serviço de restaurantes indisponível ou timeout"
+        : !restaurante
+        ? "Restaurante não encontrado"
+        : "Restaurante sem mesas disponíveis";
+      
+      logFalhaCriacaoReserva(
+        { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
+        motivo
+      );
+      
       console.warn(
         "[RESERVAS][POST] Restaurante sem mesas disponíveis ou não encontrado."
       );
@@ -324,6 +447,8 @@ app.post("/reservas", async (req, res) => {
         const restauranteCheckResp = await axios
           .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
           .catch((err) => {
+            // Log estruturado de falha no serviço de restaurantes (após lock)
+            logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "VERIFICACAO_APOS_LOCK");
             console.error(
               "[RESERVAS][POST] Erro ao re-buscar restaurante após lock:",
               err.message
@@ -332,6 +457,10 @@ app.post("/reservas", async (req, res) => {
           });
         const restCheck = restauranteCheckResp?.data;
         if (!restCheck || restCheck.mesas_disponiveis <= 0) {
+          logFalhaCriacaoReserva(
+            { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
+            "Após adquirir lock, restaurante sem mesas disponíveis"
+          );
           console.warn(
             "[RESERVAS][POST] Após lock, restaurante sem mesas disponíveis."
           );
@@ -348,26 +477,48 @@ app.post("/reservas", async (req, res) => {
 
       // ============ 4) Cria reserva ============
       console.log("[RESERVAS][POST] Inserindo reserva no banco de dados...");
-      const [result] = await db.query(
-        `INSERT INTO reservas (cliente_id, restaurante_id, data_reserva, horario, numero_pessoas)
-         VALUES (?, ?, ?, ?, ?)`,
-        [clienteId, restaurante_id, data_reserva, horario, numero_pessoas || 1]
-      );
-
-      const reservaId = result.insertId;
-      console.log(
-        `[RESERVAS][POST] Reserva criada com sucesso no banco. ID=${reservaId}`
-      );
+      const mesasAntes = restaurante.mesas_disponiveis;
+      
+      let reservaId;
+      try {
+        const [result] = await db.query(
+          `INSERT INTO reservas (cliente_id, restaurante_id, data_reserva, horario, numero_pessoas)
+           VALUES (?, ?, ?, ?, ?)`,
+          [clienteId, restaurante_id, data_reserva, horario, numero_pessoas || 1]
+        );
+        reservaId = result.insertId;
+        console.log(
+          `[RESERVAS][POST] Reserva criada com sucesso no banco. ID=${reservaId}`
+        );
+      } catch (dbError) {
+        logFalhaCriacaoReserva(
+          { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
+          "Erro ao inserir reserva no banco de dados",
+          dbError
+        );
+        throw dbError;
+      }
 
       // ============ 5) Atualiza mesas ============
-      const novasMesas = restaurante.mesas_disponiveis - 1;
+      const novasMesas = mesasAntes - 1;
       console.log(
-        `[RESERVAS][POST] Atualizando mesas do restaurante ID=${restaurante_id}: ${restaurante.mesas_disponiveis} → ${novasMesas}`
+        `[RESERVAS][POST] Atualizando mesas do restaurante ID=${restaurante_id}: ${mesasAntes} → ${novasMesas}`
       );
-      await axios.patch(
-        `${RESTAURANTES_URL}/restaurantes/${restaurante_id}/mesas`,
-        { mesas_disponiveis: novasMesas }
-      );
+      
+      try {
+        await axios.patch(
+          `${RESTAURANTES_URL}/restaurantes/${restaurante_id}/mesas`,
+          { mesas_disponiveis: novasMesas }
+        );
+      } catch (err) {
+        // Log de falha ao atualizar mesas (mas reserva já foi criada)
+        logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "ATUALIZACAO_MESAS");
+        console.error(
+          "[RESERVAS][POST] Erro ao atualizar mesas do restaurante (reserva já criada):",
+          err.message
+        );
+        // Não falha a requisição, mas registra o problema
+      }
 
       // ============ 6) Notifica replicação (assíncrono) ============
       console.log(
@@ -386,6 +537,21 @@ app.post("/reservas", async (req, res) => {
             err.message
           )
         );
+
+      // ============ LOG ESTRUTURADO DE RESERVA CRIADA ============
+      logReservaCriada({
+        id: reservaId,
+        cliente_id: clienteId,
+        cliente_nome: cliente.nome || cliente[0]?.nome || "N/A",
+        restaurante_id: restaurante_id,
+        restaurante_nome: restaurante.nome || "N/A",
+        data_reserva: data_reserva,
+        horario: horario,
+        numero_pessoas: numero_pessoas || 1,
+        mesas_antes: mesasAntes,
+        mesas_depois: novasMesas,
+        usado_lock: precisaLock,
+      });
 
       console.log(
         `[RESERVAS][POST] Fluxo de criação de reserva finalizado com sucesso. ID=${reservaId}`
@@ -408,6 +574,13 @@ app.post("/reservas", async (req, res) => {
       }
     }
   } catch (err) {
+    // Log estruturado de falha geral na criação de reserva
+    logFalhaCriacaoReserva(
+      { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
+      "Erro interno ao processar criação de reserva",
+      err
+    );
+    
     console.error(
       "[RESERVAS][POST] Erro interno ao criar reserva:",
       err.message
@@ -440,6 +613,13 @@ app.delete("/reservas/:id", async (req, res) => {
     const restauranteResp = await axios
       .get(`${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}`)
       .catch((err) => {
+        // Log estruturado de falha no serviço de restaurantes (DELETE)
+        logFalhaServicoRestaurantes(
+          reserva.restaurante_id,
+          err,
+          RESTAURANTES_URL,
+          "CANCELAMENTO_RESERVA"
+        );
         console.error(
           "[RESERVAS][DELETE] Erro ao buscar restaurante para liberar mesa:",
           err.message
@@ -449,15 +629,43 @@ app.delete("/reservas/:id", async (req, res) => {
 
     const restaurante = restauranteResp?.data;
     if (restaurante) {
-      const novasMesas = restaurante.mesas_disponiveis + 1;
+      const mesasAntes = restaurante.mesas_disponiveis;
+      const novasMesas = mesasAntes + 1;
       console.log(
-        `[RESERVAS][DELETE] Liberando mesa no restaurante ID=${reserva.restaurante_id}: ${restaurante.mesas_disponiveis} → ${novasMesas}`
+        `[RESERVAS][DELETE] Liberando mesa no restaurante ID=${reserva.restaurante_id}: ${mesasAntes} → ${novasMesas}`
       );
-      await axios.patch(
-        `${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}/mesas`,
-        { mesas_disponiveis: novasMesas }
-      );
+      
+      try {
+        await axios.patch(
+          `${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}/mesas`,
+          { mesas_disponiveis: novasMesas }
+        );
+      } catch (err) {
+        // Log estruturado de falha ao atualizar mesas no cancelamento
+        logFalhaServicoRestaurantes(
+          reserva.restaurante_id,
+          err,
+          RESTAURANTES_URL,
+          "LIBERACAO_MESA_CANCELAMENTO"
+        );
+        console.error(
+          "[RESERVAS][DELETE] Erro ao liberar mesa do restaurante (reserva já cancelada):",
+          err.message
+        );
+      }
     } else {
+      const logEntry = {
+        event: "FALHA_LIBERACAO_MESA",
+        timestamp: new Date().toISOString(),
+        severity: "WARN",
+        reserva_id: id,
+        restaurante_id: reserva.restaurante_id,
+        motivo: !restauranteResp
+          ? "Serviço de restaurantes indisponível ou timeout"
+          : "Restaurante não encontrado",
+        node_id: SELF_ID,
+      };
+      console.warn("[FALHA_LIBERACAO_MESA]", JSON.stringify(logEntry, null, 2));
       console.warn(
         "[RESERVAS][DELETE] Restaurante não encontrado ao tentar liberar mesa."
       );
@@ -479,6 +687,9 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// ===================== ENDPOINT DE MÉTRICAS =====================
+app.get("/metrics", createMetricsEndpoint(metricsCollector));
 
 // ===================== START SERVER =====================
 const PORT = process.env.PORT || 8080;
