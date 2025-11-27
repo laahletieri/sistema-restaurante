@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { getServiceUrl } from "../services/nameService";
 
 export default function Restaurantes() {
@@ -20,7 +20,7 @@ export default function Restaurantes() {
   const carregarRestaurantes = async () => {
     try {
       const baseUrl = await getServiceUrl("restaurantes");
-      const { data } = await axios.get(`${baseUrl}/restaurantes`);
+      const { data } = await api.get(`${baseUrl}/restaurantes`);
       setRestaurantes(data);
     } catch (err) {
       console.error("Erro ao carregar restaurantes:", err);
@@ -38,10 +38,10 @@ export default function Restaurantes() {
       const baseUrl = await getServiceUrl("restaurantes");
 
       if (editId) {
-        await axios.put(`${baseUrl}/restaurantes/${editId}`, form);
+        await api.put(`${baseUrl}/restaurantes/${editId}`, form);
         alert("Restaurante atualizado com sucesso!");
       } else {
-        await axios.post(`${baseUrl}/restaurantes`, form);
+        await api.post(`${baseUrl}/restaurantes`, form);
         alert("Restaurante cadastrado com sucesso!");
       }
 

@@ -10,6 +10,29 @@ const {
   createLoggingMiddleware,
   createMetricsEndpoint,
 } = require("./src/metrics");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
+
+function autenticar(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ erro: "Token não informado" });
+  }
+
+  const [tipo, token] = authHeader.split(" ");
+  if (tipo !== "Bearer" || !token) {
+    return res.status(401).json({ erro: "Formato de token inválido" });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ erro: "Token inválido ou expirado" });
+    }
+    req.user = decoded;
+    next();
+  });
+}
 
 const app = express();
 
@@ -91,6 +114,7 @@ async function connectDatabase() {
     db = await mysql.createPool(dbConfig);
     console.log("Conectado ao banco de dados RDS MySQL.");
     await criarTabelaClientes();
+    await criarTabelaUsuarios();
   } catch (err) {
     console.error("Erro ao conectar com o MySQL:", err);
     process.exit(1);
@@ -111,6 +135,22 @@ async function criarTabelaClientes() {
     console.log("Tabela 'clientes' pronta para uso.");
   } catch (err) {
     console.error("Erro ao criar/verificar tabela 'clientes':", err);
+  }
+}
+
+async function criarTabelaUsuarios() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nome VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        senha_hash VARCHAR(255) NOT NULL
+      );
+    `);
+    console.log("Tabela 'usuarios' pronta para uso.");
+  } catch (err) {
+    console.error("Erro ao criar/verificar tabela 'usuarios':", err);
   }
 }
 
@@ -150,7 +190,7 @@ app.get("/clientes/:id", async (req, res) => {
   }
 });
 
-app.post("/clientes", async (req, res) => {
+app.post("/clientes", autenticar, async (req, res) => {
   try {
     const { nome, cpf, email, telefone } = req.body;
     if (!nome || !cpf)
@@ -171,7 +211,7 @@ app.post("/clientes", async (req, res) => {
   }
 });
 
-app.put("/clientes/:id", async (req, res) => {
+app.put("/clientes/:id", autenticar, async (req, res) => {
   try {
     const { nome, cpf, email, telefone } = req.body;
     await db.query(
@@ -185,13 +225,71 @@ app.put("/clientes/:id", async (req, res) => {
   }
 });
 
-app.delete("/clientes/:id", async (req, res) => {
+app.delete("/clientes/:id", autenticar, async (req, res) => {
   try {
     await db.query("DELETE FROM clientes WHERE id=?", [req.params.id]);
     res.json({ mensagem: "Cliente removido com sucesso" });
   } catch (err) {
     console.error("Erro ao remover cliente:", err.message);
     res.status(500).json({ erro: "Erro ao remover cliente" });
+  }
+});
+
+app.post("/usuarios", async (req, res) => {
+  const { nome, email, senha } = req.body;
+
+  if (!nome || !email || !senha)
+    return res
+      .status(400)
+      .json({ erro: "Nome, email e senha são obrigatórios." });
+
+  try {
+    const [existe] = await db.query("SELECT * FROM usuarios WHERE email = ?", [
+      email,
+    ]);
+    if (existe.length > 0)
+      return res.status(400).json({ erro: "Email já cadastrado." });
+
+    const senha_hash = await bcrypt.hash(senha, 10);
+
+    await db.query(
+      "INSERT INTO usuarios (nome, email, senha_hash) VALUES (?, ?, ?)",
+      [nome, email, senha_hash]
+    );
+
+    res.status(201).json({ mensagem: "Usuário cadastrado com sucesso!" });
+  } catch (err) {
+    console.error("Erro no cadastro:", err);
+    res.status(500).json({ erro: "Erro interno ao cadastrar usuário." });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  const { email, senha } = req.body;
+
+  try {
+    const [rows] = await db.query("SELECT * FROM usuarios WHERE email = ?", [
+      email,
+    ]);
+    if (rows.length === 0)
+      return res.status(401).json({ erro: "Usuário não encontrado." });
+
+    const usuario = rows[0];
+
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha_hash);
+    if (!senhaCorreta)
+      return res.status(401).json({ erro: "Senha incorreta." });
+
+    const token = jwt.sign(
+      { id: usuario.id, email: usuario.email, nome: usuario.nome },
+      JWT_SECRET,
+      { expiresIn: "4h" }
+    );
+
+    res.json({ token });
+  } catch (err) {
+    console.error("Erro no login:", err);
+    res.status(500).json({ erro: "Erro interno no login." });
   }
 });
 

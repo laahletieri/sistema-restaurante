@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { getServiceUrl } from "../services/nameService";
 
 export default function Clientes() {
@@ -20,7 +20,7 @@ export default function Clientes() {
   async function carregarClientes() {
     try {
       const baseUrl = await getServiceUrl("clientes");
-      const res = await axios.get(`${baseUrl}/clientes`);
+      const res = await api.get(`${baseUrl}/clientes`);
       setClientes(res.data);
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
@@ -36,10 +36,10 @@ export default function Clientes() {
       const baseUrl = await getServiceUrl("clientes");
 
       if (editing) {
-        await axios.put(`${baseUrl}/clientes/${editing}`, form);
+        await api.put(`${baseUrl}/clientes/${editing}`, form);
         alert("Cliente atualizado com sucesso!");
       } else {
-        await axios.post(`${baseUrl}/clientes`, form);
+        await api.post(`${baseUrl}/clientes`, form);
         alert("Cliente cadastrado com sucesso!");
       }
 
@@ -48,7 +48,7 @@ export default function Clientes() {
       carregarClientes();
     } catch (err) {
       console.error("Erro ao salvar cliente:", err);
-      alert("❌ Erro ao salvar cliente.");
+      alert(err.response?.data?.erro || "❌ Erro ao salvar cliente.");
     }
   }
 
@@ -75,12 +75,12 @@ export default function Clientes() {
 
     try {
       const baseUrl = await getServiceUrl("clientes");
-      await axios.delete(`${baseUrl}/clientes/${id}`);
+      await api.delete(`${baseUrl}/clientes/${id}`);
       alert("Cliente excluído com sucesso!");
       carregarClientes();
     } catch (err) {
       console.error("Erro ao excluir cliente:", err);
-      alert("❌ Falha ao excluir cliente.");
+      alert(err.response?.data?.erro || "❌ Falha ao excluir cliente.");
     }
   }
 

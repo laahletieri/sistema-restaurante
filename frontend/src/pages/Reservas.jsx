@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { getServiceUrl } from "../services/nameService";
 
 export default function Reservas() {
@@ -28,8 +28,8 @@ export default function Reservas() {
       ]);
 
       const [resReservas, resRestaurantes] = await Promise.all([
-        axios.get(`${reservasBaseUrl}/reservas`),
-        axios.get(`${restaurantesBaseUrl}/restaurantes`),
+        api.get(`${reservasBaseUrl}/reservas`),
+        api.get(`${restaurantesBaseUrl}/restaurantes`),
       ]);
 
       setReservas(resReservas.data);
@@ -57,10 +57,10 @@ export default function Reservas() {
       const reservasBaseUrl = await getServiceUrl("reservas");
 
       if (editing) {
-        await axios.put(`${reservasBaseUrl}/reservas/${editing}`, form);
+        await api.put(`${reservasBaseUrl}/reservas/${editing}`, form);
         alert("Reserva atualizada com sucesso!");
       } else {
-        await axios.post(`${reservasBaseUrl}/reservas`, form);
+        await api.post(`${reservasBaseUrl}/reservas`, form);
         alert("Reserva cadastrada com sucesso!");
       }
 
@@ -115,7 +115,7 @@ export default function Reservas() {
 
     try {
       const reservasBaseUrl = await getServiceUrl("reservas");
-      await axios.delete(`${reservasBaseUrl}/reservas/${id}`);
+      await api.delete(`${reservasBaseUrl}/reservas/${id}`);
       alert("Reserva excluída com sucesso!");
       carregarDados();
     } catch (err) {

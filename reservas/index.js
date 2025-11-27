@@ -10,6 +10,28 @@ const {
   createLoggingMiddleware,
   createMetricsEndpoint,
 } = require("./src/metrics");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
+
+function autenticar(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ erro: "Token não informado" });
+  }
+
+  const [tipo, token] = authHeader.split(" ");
+  if (tipo !== "Bearer" || !token) {
+    return res.status(401).json({ erro: "Formato de token inválido" });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ erro: "Token inválido ou expirado" });
+    }
+    req.user = decoded;
+    next();
+  });
+}
 
 const app = express();
 
@@ -156,7 +178,12 @@ function logFalhaServicoClientes(cpf, error, url) {
 /**
  * Log estruturado para falha no serviço de restaurantes
  */
-function logFalhaServicoRestaurantes(restaurante_id, error, url, contexto = "CRIACAO_RESERVA") {
+function logFalhaServicoRestaurantes(
+  restaurante_id,
+  error,
+  url,
+  contexto = "CRIACAO_RESERVA"
+) {
   const logEntry = {
     event: "FALHA_SERVICO_RESTAURANTES",
     timestamp: new Date().toISOString(),
@@ -189,10 +216,12 @@ function logFalhaCriacaoReserva(dados, motivo, erro = null) {
       horario: dados.horario,
       numero_pessoas: dados.numero_pessoas,
     },
-    error: erro ? {
-      message: erro.message,
-      code: erro.code,
-    } : null,
+    error: erro
+      ? {
+          message: erro.message,
+          code: erro.code,
+        }
+      : null,
     node_id: SELF_ID,
   };
   console.error("[FALHA_RESERVA]", JSON.stringify(logEntry, null, 2));
@@ -300,7 +329,7 @@ app.get("/reservas", async (req, res) => {
 });
 
 // criar reserva com coordenação e lock apenas quando mesas <= 5
-app.post("/reservas", async (req, res) => {
+app.post("/reservas", autenticar, async (req, res) => {
   const { cpf, restaurante_id, data_reserva, horario, numero_pessoas } =
     req.body;
 
@@ -354,15 +383,15 @@ app.post("/reservas", async (req, res) => {
       });
 
     if (!clienteResp || !clienteResp.data) {
-      const motivo = !clienteResp 
-        ? "Serviço de clientes indisponível ou timeout" 
+      const motivo = !clienteResp
+        ? "Serviço de clientes indisponível ou timeout"
         : "Cliente não encontrado para o CPF informado";
-      
+
       logFalhaCriacaoReserva(
         { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
         motivo
       );
-      
+
       console.warn(
         "[RESERVAS][POST] Cliente não encontrado para o CPF informado."
       );
@@ -381,7 +410,12 @@ app.post("/reservas", async (req, res) => {
       .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
       .catch((err) => {
         // Log estruturado de falha no serviço de restaurantes
-        logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "CRIACAO_RESERVA");
+        logFalhaServicoRestaurantes(
+          restaurante_id,
+          err,
+          RESTAURANTES_URL,
+          "CRIACAO_RESERVA"
+        );
         console.error(
           "[RESERVAS][POST] Erro ao chamar serviço de restaurantes:",
           err.message
@@ -396,12 +430,12 @@ app.post("/reservas", async (req, res) => {
         : !restaurante
         ? "Restaurante não encontrado"
         : "Restaurante sem mesas disponíveis";
-      
+
       logFalhaCriacaoReserva(
         { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
         motivo
       );
-      
+
       console.warn(
         "[RESERVAS][POST] Restaurante sem mesas disponíveis ou não encontrado."
       );
@@ -440,7 +474,7 @@ app.post("/reservas", async (req, res) => {
         temLock = true;
         console.log("[RESERVAS][POST] LOCK adquirido com sucesso.");
 
-        // (opcional, mas mais seguro) rebusca restaurante já com lock
+        // rebusca restaurante já com lock
         console.log(
           "[RESERVAS][POST] Re-buscando restaurante após adquirir lock para garantir consistência..."
         );
@@ -448,7 +482,12 @@ app.post("/reservas", async (req, res) => {
           .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
           .catch((err) => {
             // Log estruturado de falha no serviço de restaurantes (após lock)
-            logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "VERIFICACAO_APOS_LOCK");
+            logFalhaServicoRestaurantes(
+              restaurante_id,
+              err,
+              RESTAURANTES_URL,
+              "VERIFICACAO_APOS_LOCK"
+            );
             console.error(
               "[RESERVAS][POST] Erro ao re-buscar restaurante após lock:",
               err.message
@@ -478,13 +517,19 @@ app.post("/reservas", async (req, res) => {
       // ============ 4) Cria reserva ============
       console.log("[RESERVAS][POST] Inserindo reserva no banco de dados...");
       const mesasAntes = restaurante.mesas_disponiveis;
-      
+
       let reservaId;
       try {
         const [result] = await db.query(
           `INSERT INTO reservas (cliente_id, restaurante_id, data_reserva, horario, numero_pessoas)
            VALUES (?, ?, ?, ?, ?)`,
-          [clienteId, restaurante_id, data_reserva, horario, numero_pessoas || 1]
+          [
+            clienteId,
+            restaurante_id,
+            data_reserva,
+            horario,
+            numero_pessoas || 1,
+          ]
         );
         reservaId = result.insertId;
         console.log(
@@ -504,7 +549,7 @@ app.post("/reservas", async (req, res) => {
       console.log(
         `[RESERVAS][POST] Atualizando mesas do restaurante ID=${restaurante_id}: ${mesasAntes} → ${novasMesas}`
       );
-      
+
       try {
         await axios.patch(
           `${RESTAURANTES_URL}/restaurantes/${restaurante_id}/mesas`,
@@ -512,7 +557,12 @@ app.post("/reservas", async (req, res) => {
         );
       } catch (err) {
         // Log de falha ao atualizar mesas (mas reserva já foi criada)
-        logFalhaServicoRestaurantes(restaurante_id, err, RESTAURANTES_URL, "ATUALIZACAO_MESAS");
+        logFalhaServicoRestaurantes(
+          restaurante_id,
+          err,
+          RESTAURANTES_URL,
+          "ATUALIZACAO_MESAS"
+        );
         console.error(
           "[RESERVAS][POST] Erro ao atualizar mesas do restaurante (reserva já criada):",
           err.message
@@ -580,7 +630,7 @@ app.post("/reservas", async (req, res) => {
       "Erro interno ao processar criação de reserva",
       err
     );
-    
+
     console.error(
       "[RESERVAS][POST] Erro interno ao criar reserva:",
       err.message
@@ -590,7 +640,7 @@ app.post("/reservas", async (req, res) => {
 });
 
 // deletar reserva
-app.delete("/reservas/:id", async (req, res) => {
+app.delete("/reservas/:id", autenticar, async (req, res) => {
   const id = req.params.id;
   console.log(`[RESERVAS][DELETE] Requisição para cancelar reserva ID=${id}`);
   try {
@@ -634,7 +684,7 @@ app.delete("/reservas/:id", async (req, res) => {
       console.log(
         `[RESERVAS][DELETE] Liberando mesa no restaurante ID=${reserva.restaurante_id}: ${mesasAntes} → ${novasMesas}`
       );
-      
+
       try {
         await axios.patch(
           `${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}/mesas`,

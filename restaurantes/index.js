@@ -10,6 +10,28 @@ const {
   createLoggingMiddleware,
   createMetricsEndpoint,
 } = require("./src/metrics");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
+
+function autenticar(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ erro: "Token não informado" });
+  }
+
+  const [tipo, token] = authHeader.split(" ");
+  if (tipo !== "Bearer" || !token) {
+    return res.status(401).json({ erro: "Formato de token inválido" });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ erro: "Token inválido ou expirado" });
+    }
+    req.user = decoded;
+    next();
+  });
+}
 
 const app = express();
 
@@ -140,7 +162,7 @@ app.get("/restaurantes/:id", async (req, res) => {
   }
 });
 
-app.post("/restaurantes", async (req, res) => {
+app.post("/restaurantes", autenticar, async (req, res) => {
   try {
     const { nome, endereco, telefone, tipoCulinaria, mesas_disponiveis } =
       req.body;
@@ -158,7 +180,7 @@ app.post("/restaurantes", async (req, res) => {
   }
 });
 
-app.put("/restaurantes/:id", async (req, res) => {
+app.put("/restaurantes/:id", autenticar, async (req, res) => {
   try {
     const { nome, endereco, telefone, tipoCulinaria, mesas_disponiveis } =
       req.body;
@@ -198,7 +220,7 @@ app.patch("/restaurantes/:id/mesas", async (req, res) => {
   }
 });
 
-app.delete("/restaurantes/:id", async (req, res) => {
+app.delete("/restaurantes/:id", autenticar, async (req, res) => {
   try {
     await db.query("DELETE FROM restaurantes WHERE id=?", [req.params.id]);
     res.json({ mensagem: "Restaurante removido com sucesso" });
