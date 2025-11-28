@@ -736,7 +736,14 @@ app.get("/", (req, res) => {
   res.send("Serviço de Reservas ativo e rodando!");
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+// ===================== HEALTH CHECK PADRONIZADO =====================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "reservas",
+    timestamp: Date.now(),
+  });
+});
 
 // ===================== ENDPOINT DE MÉTRICAS =====================
 app.get("/metrics", createMetricsEndpoint(metricsCollector));
@@ -760,3 +767,4 @@ setTimeout(async () => {
     console.error(`[BULLY:${SELF_ID}] Erro na eleição inicial:`, err.message);
   }
 }, 5000);
+

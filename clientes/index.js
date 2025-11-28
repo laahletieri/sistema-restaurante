@@ -292,10 +292,17 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ erro: "Erro interno no login." });
   }
 });
-
 // ===================== BASE =====================
 app.get("/", (req, res) => res.send("Serviço de Clientes ativo e rodando!"));
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// ===================== HEALTH CHECK PADRONIZADO =====================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "clientes",
+    timestamp: Date.now(),
+  });
+});
 
 // ===================== ENDPOINT DE MÉTRICAS =====================
 app.get("/metrics", createMetricsEndpoint(metricsCollector));
@@ -305,7 +312,8 @@ const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Serviço de Clientes rodando na porta ${PORT}`);
-  // Inicia o Bully de forma assíncrona, mas fora do listen
+
+  // Inicia o Bully de forma assíncrona
   bully
     .start()
     .then(() => {
@@ -325,3 +333,4 @@ setTimeout(async () => {
     console.error(`[BULLY:${SELF_ID}] Erro na eleição inicial:`, err.message);
   }
 }, 10000);
+

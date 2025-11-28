@@ -343,7 +343,15 @@ app.get("/", (req, res) => {
   res.send("✅ Serviço de Replicação ativo e rodando!");
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+// ===================== HEALTH CHECK PADRONIZADO =====================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "replicacao",
+    timestamp: Date.now(),
+  });
+});
+
 
 // ============================================================
 // INICIALIZAÇÃO E POLLING AUTOMÁTICO

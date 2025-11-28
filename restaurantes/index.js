@@ -230,11 +230,19 @@ app.delete("/restaurantes/:id", autenticar, async (req, res) => {
   }
 });
 
-// Base endpoints
+// ===================== ENDPOINTS BASE =====================
 app.get("/", (req, res) =>
   res.send("Serviço de Restaurantes ativo e rodando!")
 );
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// ===================== HEALTH CHECK PADRONIZADO =====================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "restaurantes",
+    timestamp: Date.now(),
+  });
+});
 
 // ===================== ENDPOINT DE MÉTRICAS =====================
 app.get("/metrics", createMetricsEndpoint(metricsCollector));
@@ -256,3 +264,4 @@ app.listen(PORT, "0.0.0.0", () => {
       );
   }, 10000);
 });
+
