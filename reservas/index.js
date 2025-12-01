@@ -312,8 +312,8 @@ app.get("/reservas", async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT 
-        r.id, r.data_reserva, r.horario, r.numero_pessoas,
-        c.nome AS nome_cliente,
+        r.id, r.data_reserva, r.horario, r.numero_pessoas, r.restaurante_id,
+        c.nome AS nome_cliente, c.cpf AS cpf,
         rest.nome AS nome_restaurante
       FROM reservas r
       LEFT JOIN clientes c ON r.cliente_id = c.id
@@ -636,6 +636,141 @@ app.post("/reservas", autenticar, async (req, res) => {
       err.message
     );
     return res.status(500).json({ erro: "Erro interno ao criar reserva." });
+  }
+});
+
+// atualizar reserva (sem mexer em mesas_disponiveis)
+app.put("/reservas/:id", autenticar, async (req, res) => {
+  const reservaId = req.params.id;
+  const { cpf, restaurante_id, data_reserva, horario, numero_pessoas } =
+    req.body;
+
+  console.log(
+    `[RESERVAS][PUT] Requisição para atualizar reserva ID=${reservaId} no nó ${SELF_ID}. Body:`,
+    { cpf, restaurante_id, data_reserva, horario, numero_pessoas }
+  );
+
+  try {
+    // ============ 0) Verifica se é o coordenador ============
+    if (!bully.coordinator || bully.coordinator.id !== SELF_ID) {
+      if (!bully.coordinator) {
+        console.error(
+          "[RESERVAS][PUT] Nenhum coordenador disponível no momento."
+        );
+        return res.status(503).json({ erro: "Nenhum coordenador disponível" });
+      }
+
+      console.log(
+        `[RESERVAS][PUT] Eu (nó ${SELF_ID}) NÃO sou coordenador. Encaminhando atualização para coordenador ${bully.coordinator.id} (${bully.coordinator.url}).`
+      );
+      const result = await axios.put(
+        `${bully.coordinator.url}/reservas/${reservaId}`,
+        req.body
+      );
+      console.log(
+        "[RESERVAS][PUT] Resposta retornada pelo coordenador. Status:",
+        result.status
+      );
+      return res.status(result.status).json(result.data);
+    }
+
+    console.log(
+      `[RESERVAS][PUT] Eu (nó ${SELF_ID}) sou o COORDENADOR. Processando atualização localmente.`
+    );
+
+    // ============ 1) Verifica se reserva existe ============
+    const [existentes] = await db.query("SELECT * FROM reservas WHERE id = ?", [
+      reservaId,
+    ]);
+    if (existentes.length === 0) {
+      console.warn(
+        `[RESERVAS][PUT] Reserva ID=${reservaId} não encontrada no banco.`
+      );
+      return res.status(404).json({ erro: "Reserva não encontrada." });
+    }
+
+    // ============ 2) Busca cliente pelo CPF ============
+    console.log(
+      `[RESERVAS][PUT] Buscando cliente pelo serviço de clientes. CPF=${cpf}`
+    );
+    const clienteResp = await axios
+      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`)
+      .catch((err) => {
+        logFalhaServicoClientes(cpf, err, CLIENTES_URL);
+        console.error(
+          "[RESERVAS][PUT] Erro ao chamar serviço de clientes:",
+          err.message
+        );
+        return null;
+      });
+
+    if (!clienteResp || !clienteResp.data) {
+      console.warn(
+        "[RESERVAS][PUT] Cliente não encontrado para o CPF informado."
+      );
+      return res.status(400).json({ erro: "Cliente não encontrado." });
+    }
+
+    const cliente = clienteResp.data;
+    const clienteId = cliente.id || cliente[0]?.id;
+    console.log(`[RESERVAS][PUT] Cliente encontrado. ID=${clienteId}`);
+
+    // ============ 3) Valida restaurante (sem mexer em mesas) ============
+    console.log(
+      `[RESERVAS][PUT] Validando restaurante ID=${restaurante_id} pelo serviço de restaurantes.`
+    );
+    const restauranteResp = await axios
+      .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
+      .catch((err) => {
+        logFalhaServicoRestaurantes(
+          restaurante_id,
+          err,
+          RESTAURANTES_URL,
+          "ATUALIZACAO_RESERVA"
+        );
+        console.error(
+          "[RESERVAS][PUT] Erro ao chamar serviço de restaurantes:",
+          err.message
+        );
+        return null;
+      });
+
+    const restaurante = restauranteResp?.data;
+    if (!restaurante) {
+      console.warn(
+        "[RESERVAS][PUT] Restaurante não encontrado para o ID informado."
+      );
+      return res.status(400).json({ erro: "Restaurante não encontrado." });
+    }
+
+    // ============ 4) Atualiza reserva (sem alterar mesas_disponiveis) ============
+    console.log(
+      `[RESERVAS][PUT] Atualizando reserva ID=${reservaId} no banco de dados...`
+    );
+    await db.query(
+      `UPDATE reservas
+       SET cliente_id = ?, restaurante_id = ?, data_reserva = ?, horario = ?, numero_pessoas = ?
+       WHERE id = ?`,
+      [
+        clienteId,
+        restaurante_id,
+        data_reserva,
+        horario,
+        numero_pessoas || 1,
+        reservaId,
+      ]
+    );
+
+    console.log(
+      `[RESERVAS][PUT] Reserva ID=${reservaId} atualizada com sucesso.`
+    );
+    return res.json({ mensagem: "Reserva atualizada com sucesso!" });
+  } catch (err) {
+    console.error(
+      "[RESERVAS][PUT] Erro interno ao atualizar reserva:",
+      err.message
+    );
+    return res.status(500).json({ erro: "Erro interno ao atualizar reserva." });
   }
 });
 
