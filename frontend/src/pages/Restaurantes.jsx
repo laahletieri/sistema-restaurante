@@ -56,12 +56,18 @@ export default function Restaurantes() {
       carregarRestaurantes();
     } catch (err) {
       console.error("Erro ao salvar restaurante:", err);
-      alert("Erro ao salvar restaurante.");
+      alert(err.response?.data?.erro || "Erro ao salvar restaurante.");
     }
   };
 
   const editar = (r) => {
-    setForm(r);
+    setForm({
+      nome: r.nome,
+      endereco: r.endereco,
+      telefone: r.telefone,
+      tipoCulinaria: r.tipoCulinaria,
+      mesas_disponiveis: r.mesas_disponiveis,
+    });
     setEditId(r.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -81,11 +87,12 @@ export default function Restaurantes() {
     if (window.confirm("Deseja excluir este restaurante?")) {
       try {
         const baseUrl = await getServiceUrl("restaurantes");
-        await axios.delete(`${baseUrl}/restaurantes/${id}`);
+        await api.delete(`${baseUrl}/restaurantes/${id}`);
+        alert("Restaurante excluído com sucesso!");
         carregarRestaurantes();
       } catch (err) {
         console.error("Erro ao excluir restaurante:", err);
-        alert("Erro ao excluir restaurante.");
+        alert(err.response?.data?.erro || "Erro ao excluir restaurante.");
       }
     }
   };
