@@ -16,7 +16,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
 function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.status(401).json({ erro: "Token não informado" });
+    return res
+      .status(401)
+      .json({ erro: "Token não informado. Realize seu login." });
   }
 
   const [tipo, token] = authHeader.split(" ");
@@ -264,4 +266,3 @@ app.listen(PORT, "0.0.0.0", () => {
       );
   }, 10000);
 });
-

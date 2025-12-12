@@ -15,9 +15,13 @@ export default function Reservas() {
     numero_pessoas: 1,
   });
 
+  // token (se existir)
+  const token = localStorage.getItem("token");
+
   useEffect(() => {
     carregarDados();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   async function carregarDados() {
     try {
@@ -27,16 +31,31 @@ export default function Reservas() {
         getServiceUrl("restaurantes"),
       ]);
 
+      // sempre buscamos restaurantes (são públicos)
+      const promiseRest = api.get(`${restaurantesBaseUrl}/restaurantes`);
+
+      // reservas só se estiver logado
+      const promiseReservas = token
+        ? api.get(`${reservasBaseUrl}/reservas`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        : Promise.resolve({ data: [] });
+
       const [resReservas, resRestaurantes] = await Promise.all([
-        api.get(`${reservasBaseUrl}/reservas`),
-        api.get(`${restaurantesBaseUrl}/restaurantes`),
+        promiseReservas,
+        promiseRest,
       ]);
 
       setReservas(resReservas.data);
       setRestaurantes(resRestaurantes.data);
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
-      alert("Falha ao carregar dados das reservas.");
+      if (err.response?.status === 401) {
+        alert("❌ Acesso negado. Faça login novamente.");
+        // opcional: localStorage.removeItem("token");
+      } else {
+        alert("Falha ao carregar dados das reservas.");
+      }
     }
   }
 
@@ -57,9 +76,17 @@ export default function Reservas() {
       const reservasBaseUrl = await getServiceUrl("reservas");
 
       if (editing) {
-        await api.put(`${reservasBaseUrl}/reservas/${editing}`, form);
+        // edição exige token
+        if (!token) {
+          alert("Para editar uma reserva é necessário realizar login.");
+          return;
+        }
+        await api.put(`${reservasBaseUrl}/reservas/${editing}`, form, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         alert("Reserva atualizada com sucesso!");
       } else {
+        // criação permanece pública (conforme seu fluxo atual)
         await api.post(`${reservasBaseUrl}/reservas`, form);
         alert("Reserva cadastrada com sucesso!");
       }
@@ -73,17 +100,22 @@ export default function Reservas() {
         horario: "",
         numero_pessoas: 1,
       });
+      // recarrega dados (lista só recarrega se token presente)
       carregarDados();
     } catch (err) {
       console.error("Erro ao salvar reserva:", err);
-      alert(
+      const message =
         err.response?.data?.erro ||
-          "Erro ao salvar reserva. Verifique se o cliente existe."
-      );
+        "Erro ao salvar reserva. Verifique se o cliente existe.";
+      alert(message);
     }
   }
 
   function iniciarEdicao(reserva) {
+    if (!token) {
+      alert("Para editar uma reserva é necessário realizar login.");
+      return;
+    }
     setEditing(reserva.id);
     setForm({
       nome: reserva.nome_cliente || "",
@@ -111,16 +143,23 @@ export default function Reservas() {
   }
 
   async function excluirReserva(id) {
+    if (!token) {
+      alert("Para excluir uma reserva é necessário realizar login.");
+      return;
+    }
+
     if (!window.confirm("Deseja realmente excluir esta reserva?")) return;
 
     try {
       const reservasBaseUrl = await getServiceUrl("reservas");
-      await api.delete(`${reservasBaseUrl}/reservas/${id}`);
+      await api.delete(`${reservasBaseUrl}/reservas/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       alert("Reserva excluída com sucesso!");
       carregarDados();
     } catch (err) {
       console.error("Erro ao excluir reserva:", err);
-      alert("Erro ao excluir reserva.");
+      alert(err.response?.data?.erro || "Erro ao excluir reserva.");
     }
   }
 
@@ -244,40 +283,53 @@ export default function Reservas() {
       {/* Lista */}
       <div className="max-w-5xl mx-auto">
         <h2 className="text-lg font-semibold mb-3">Reservas cadastradas</h2>
-        <ul className="space-y-3">
-          {reservas.map((r) => (
-            <li
-              key={r.id}
-              className="flex justify-between items-center bg-gray-50 border p-3 rounded-lg shadow-sm"
-            >
-              <span>
-                <strong>Cliente:</strong> {r.nome_cliente} |{" "}
-                <strong>Restaurante:</strong> {r.nome_restaurante} |{" "}
-                <strong>Data:</strong>{" "}
-                {r.data_reserva
-                  ? new Date(r.data_reserva).toLocaleDateString("pt-BR")
-                  : "—"}{" "}
-                | <strong>Hora:</strong> {r.horario || "—"} |{" "}
-                <strong>Pessoas:</strong> {r.numero_pessoas || 1}
-              </span>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => iniciarEdicao(r)}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => excluirReserva(r.id)}
-                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-                >
-                  Excluir
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {/* Se não estiver logado, exibe mensagem instruindo login */}
+        {!token ? (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+            <p className="text-sm">
+              Para visualizar as reservas cadastradas, realize seu login.
+            </p>
+          </div>
+        ) : reservas.length === 0 ? (
+          <p>Nenhuma reserva cadastrada.</p>
+        ) : (
+          <ul className="space-y-3">
+            {reservas.map((r) => (
+              <li
+                key={r.id}
+                className="flex justify-between items-center bg-gray-50 border p-3 rounded-lg shadow-sm"
+              >
+                <span>
+                  <strong>Cliente:</strong> {r.nome_cliente} |{" "}
+                  <strong>Restaurante:</strong> {r.nome_restaurante} |{" "}
+                  <strong>Data:</strong>{" "}
+                  {r.data_reserva
+                    ? new Date(r.data_reserva).toLocaleDateString("pt-BR")
+                    : "—"}{" "}
+                  | <strong>Hora:</strong> {r.horario || "—"} |{" "}
+                  <strong>Pessoas:</strong> {r.numero_pessoas || 1}
+                </span>
+
+                <div className="flex gap-2">
+                  {/* Botões só aparecem quando há token */}
+                  <button
+                    onClick={() => iniciarEdicao(r)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => excluirReserva(r.id)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

@@ -16,7 +16,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
 function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.status(401).json({ erro: "Token não informado" });
+    return res
+      .status(401)
+      .json({ erro: "Token não informado. Realize seu login." });
   }
 
   const [tipo, token] = authHeader.split(" ");
@@ -307,7 +309,7 @@ app.get("/heartbeat", (req, res) => {
 // ===================== ENDPOINTS RESERVAS =====================
 
 // listar reservas
-app.get("/reservas", async (req, res) => {
+app.get("/reservas", autenticar, async (req, res) => {
   console.log("[RESERVAS][GET] Listando todas as reservas...");
   try {
     const [rows] = await db.query(`
@@ -902,4 +904,3 @@ setTimeout(async () => {
     console.error(`[BULLY:${SELF_ID}] Erro na eleição inicial:`, err.message);
   }
 }, 5000);
-

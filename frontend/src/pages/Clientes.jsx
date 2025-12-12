@@ -12,19 +12,36 @@ export default function Clientes() {
     telefone: "",
   });
 
-  // Carregar lista ao entrar
+  // token (se existir)
+  const token = localStorage.getItem("token");
+
+  // Carregar lista ao entrar APENAS se estiver logado
   useEffect(() => {
-    carregarClientes();
-  }, []);
+    if (token) {
+      carregarClientes();
+    } else {
+      // limpa qualquer lista carregada anteriormente
+      setClientes([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   async function carregarClientes() {
     try {
       const baseUrl = await getServiceUrl("clientes");
-      const res = await api.get(`${baseUrl}/clientes`);
+      const res = await api.get(`${baseUrl}/clientes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setClientes(res.data);
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
-      alert("❌ Falha ao conectar com o serviço de clientes.");
+      // Se houver problema de autenticação, limpar token local e informar
+      if (err.response?.status === 401) {
+        alert("❌ Acesso negado. Faça login novamente.");
+        // opcional: localStorage.removeItem("token");
+      } else {
+        alert("❌ Falha ao conectar com o serviço de clientes.");
+      }
     }
   }
 
@@ -36,16 +53,25 @@ export default function Clientes() {
       const baseUrl = await getServiceUrl("clientes");
 
       if (editing) {
-        await api.put(`${baseUrl}/clientes/${editing}`, form);
+        // PUT requer token — certifique-se de que o usuário está logado
+        if (!token) {
+          alert("Para editar um cliente é necessário estar logado.");
+          return;
+        }
+        await api.put(`${baseUrl}/clientes/${editing}`, form, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         alert("Cliente atualizado com sucesso!");
       } else {
+        // POST - manter público
         await api.post(`${baseUrl}/clientes`, form);
         alert("Cliente cadastrado com sucesso!");
       }
 
       setForm({ nome: "", cpf: "", email: "", telefone: "" });
       setEditing(null);
-      carregarClientes();
+      // Recarrega lista somente se estiver logado
+      if (token) carregarClientes();
     } catch (err) {
       console.error("Erro ao salvar cliente:", err);
       alert(err.response?.data?.erro || "❌ Erro ao salvar cliente.");
@@ -54,6 +80,10 @@ export default function Clientes() {
 
   // Iniciar edição
   function iniciarEdicao(cliente) {
+    if (!token) {
+      alert("Para editar um cliente é necessário realizar login.");
+      return;
+    }
     setEditing(cliente.id);
     setForm({
       nome: cliente.nome,
@@ -71,11 +101,18 @@ export default function Clientes() {
 
   // Excluir
   async function excluirCliente(id) {
+    if (!token) {
+      alert("Para excluir um cliente é necessário realizar login.");
+      return;
+    }
+
     if (!window.confirm("Deseja realmente excluir este cliente?")) return;
 
     try {
       const baseUrl = await getServiceUrl("clientes");
-      await api.delete(`${baseUrl}/clientes/${id}`);
+      await api.delete(`${baseUrl}/clientes/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       alert("Cliente excluído com sucesso!");
       carregarClientes();
     } catch (err) {
@@ -157,35 +194,47 @@ export default function Clientes() {
       <div className="max-w-3xl mx-auto">
         <h2 className="text-lg font-semibold mb-2">Clientes cadastrados</h2>
 
-        <ul className="space-y-3">
-          {clientes.map((c) => (
-            <li
-              key={c.id}
-              className="flex justify-between items-center bg-gray-50 border p-3 rounded-lg shadow-sm"
-            >
-              <span>
-                <strong>Nome:</strong> {c.nome} | <strong>CPF:</strong> {c.cpf}{" "}
-                | <strong>Email:</strong> {c.email || "—"} |{" "}
-                <strong>Telefone:</strong> {c.telefone || "—"}
-              </span>
+        {/* Se não estiver logado, exibe mensagem instruindo login */}
+        {!token ? (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+            <p className="text-sm">
+              Para visualizar os clientes cadastrados, realize seu login.
+            </p>
+          </div>
+        ) : clientes.length === 0 ? (
+          <p>Nenhum cliente cadastrado.</p>
+        ) : (
+          <ul className="space-y-3">
+            {clientes.map((c) => (
+              <li
+                key={c.id}
+                className="flex justify-between items-center bg-gray-50 border p-3 rounded-lg shadow-sm"
+              >
+                <span>
+                  <strong>Nome:</strong> {c.nome} | <strong>CPF:</strong>{" "}
+                  {c.cpf} | <strong>Email:</strong> {c.email || "—"} |{" "}
+                  <strong>Telefone:</strong> {c.telefone || "—"}
+                </span>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => iniciarEdicao(c)}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => excluirCliente(c.id)}
-                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-                >
-                  Excluir
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                <div className="flex gap-2">
+                  {/* Botões só aparecem quando há token */}
+                  <button
+                    onClick={() => iniciarEdicao(c)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => excluirCliente(c.id)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
