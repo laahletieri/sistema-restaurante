@@ -1,3 +1,4 @@
+// index.js - serviço reservas (corrigido: forward de Authorization e uso ao consultar clientes)
 const express = require("express");
 require("dotenv").config();
 const mysql = require("mysql2/promise");
@@ -134,9 +135,6 @@ const bully = new Bully({
 bully.setSelfUrl(SELF_URL);
 
 // ===================== FUNÇÕES AUXILIARES DE LOGGING =====================
-/**
- * Log estruturado para criação de reservas
- */
 function logReservaCriada(reservaData) {
   const logEntry = {
     event: "RESERVA_CRIADA",
@@ -157,9 +155,6 @@ function logReservaCriada(reservaData) {
   console.log("[EVENTO_CRITICO]", JSON.stringify(logEntry, null, 2));
 }
 
-/**
- * Log estruturado para falha no serviço de clientes
- */
 function logFalhaServicoClientes(cpf, error, url) {
   const logEntry = {
     event: "FALHA_SERVICO_CLIENTES",
@@ -177,9 +172,6 @@ function logFalhaServicoClientes(cpf, error, url) {
   console.error("[FALHA_SERVICO]", JSON.stringify(logEntry, null, 2));
 }
 
-/**
- * Log estruturado para falha no serviço de restaurantes
- */
 function logFalhaServicoRestaurantes(
   restaurante_id,
   error,
@@ -202,9 +194,6 @@ function logFalhaServicoRestaurantes(
   console.error("[FALHA_SERVICO]", JSON.stringify(logEntry, null, 2));
 }
 
-/**
- * Log estruturado para falha na criação de reserva
- */
 function logFalhaCriacaoReserva(dados, motivo, erro = null) {
   const logEntry = {
     event: "FALHA_CRIACAO_RESERVA",
@@ -302,7 +291,6 @@ app.post("/coordinator", (req, res) => {
 });
 
 app.get("/heartbeat", (req, res) => {
-  // pode usar isso pra monitoria também
   res.json({ ok: true });
 });
 
@@ -353,9 +341,20 @@ app.post("/reservas", autenticar, async (req, res) => {
       console.log(
         `[RESERVAS][POST] Eu (nó ${SELF_ID}) NÃO sou coordenador. Encaminhando requisição para coordenador ${bully.coordinator.id} (${bully.coordinator.url}).`
       );
+
+      // encaminha também o header Authorization se existir
+      const forwardHeaders = {};
+      if (req.headers && req.headers.authorization) {
+        forwardHeaders.Authorization = req.headers.authorization;
+        console.log(
+          "[RESERVAS][POST] Encaminhando Authorization ao coordenador."
+        );
+      }
+
       const result = await axios.post(
         `${bully.coordinator.url}/reservas`,
-        req.body
+        req.body,
+        { headers: forwardHeaders, timeout: 10000 }
       );
       console.log(
         "[RESERVAS][POST] Resposta retornada pelo coordenador. Status:",
@@ -372,10 +371,16 @@ app.post("/reservas", autenticar, async (req, res) => {
     console.log(
       `[RESERVAS][POST] Buscando cliente pelo serviço de clientes. CPF=${cpf}`
     );
+
+    // repassa o header Authorization na chamada a clientes, se houver
+    const clientesHeaders =
+      req.headers && req.headers.authorization
+        ? { Authorization: req.headers.authorization }
+        : {};
+
     const clienteResp = await axios
-      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`)
+      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`, { headers: clientesHeaders })
       .catch((err) => {
-        // Log estruturado de falha no serviço de clientes
         logFalhaServicoClientes(cpf, err, CLIENTES_URL);
         console.error(
           "[RESERVAS][POST] Erro ao chamar serviço de clientes:",
@@ -411,7 +416,6 @@ app.post("/reservas", autenticar, async (req, res) => {
     const restauranteResp = await axios
       .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
       .catch((err) => {
-        // Log estruturado de falha no serviço de restaurantes
         logFalhaServicoRestaurantes(
           restaurante_id,
           err,
@@ -448,7 +452,6 @@ app.post("/reservas", autenticar, async (req, res) => {
       `[RESERVAS][POST] Restaurante encontrado. ID=${restaurante_id}, mesas_disponiveis=${restaurante.mesas_disponiveis}`
     );
 
-    // decide se precisa de lock forte (coordenação de exclusão mútua)
     const precisaLock = restaurante.mesas_disponiveis <= 5;
     console.log(
       `[RESERVAS][POST] Verificação de coordenação forte: mesas_disponiveis=${restaurante.mesas_disponiveis} → precisaLock=${precisaLock}`
@@ -483,7 +486,6 @@ app.post("/reservas", autenticar, async (req, res) => {
         const restauranteCheckResp = await axios
           .get(`${RESTAURANTES_URL}/restaurantes/${restaurante_id}`)
           .catch((err) => {
-            // Log estruturado de falha no serviço de restaurantes (após lock)
             logFalhaServicoRestaurantes(
               restaurante_id,
               err,
@@ -558,7 +560,6 @@ app.post("/reservas", autenticar, async (req, res) => {
           { mesas_disponiveis: novasMesas }
         );
       } catch (err) {
-        // Log de falha ao atualizar mesas (mas reserva já foi criada)
         logFalhaServicoRestaurantes(
           restaurante_id,
           err,
@@ -569,7 +570,6 @@ app.post("/reservas", autenticar, async (req, res) => {
           "[RESERVAS][POST] Erro ao atualizar mesas do restaurante (reserva já criada):",
           err.message
         );
-        // Não falha a requisição, mas registra o problema
       }
 
       // ============ 6) Notifica replicação (assíncrono) ============
@@ -626,7 +626,6 @@ app.post("/reservas", autenticar, async (req, res) => {
       }
     }
   } catch (err) {
-    // Log estruturado de falha geral na criação de reserva
     logFalhaCriacaoReserva(
       { cpf, restaurante_id, data_reserva, horario, numero_pessoas },
       "Erro interno ao processar criação de reserva",
@@ -665,9 +664,20 @@ app.put("/reservas/:id", autenticar, async (req, res) => {
       console.log(
         `[RESERVAS][PUT] Eu (nó ${SELF_ID}) NÃO sou coordenador. Encaminhando atualização para coordenador ${bully.coordinator.id} (${bully.coordinator.url}).`
       );
+
+      // encaminha também o header Authorization se existir
+      const forwardHeaders = {};
+      if (req.headers && req.headers.authorization) {
+        forwardHeaders.Authorization = req.headers.authorization;
+        console.log(
+          "[RESERVAS][PUT] Encaminhando Authorization ao coordenador."
+        );
+      }
+
       const result = await axios.put(
         `${bully.coordinator.url}/reservas/${reservaId}`,
-        req.body
+        req.body,
+        { headers: forwardHeaders, timeout: 10000 }
       );
       console.log(
         "[RESERVAS][PUT] Resposta retornada pelo coordenador. Status:",
@@ -695,8 +705,14 @@ app.put("/reservas/:id", autenticar, async (req, res) => {
     console.log(
       `[RESERVAS][PUT] Buscando cliente pelo serviço de clientes. CPF=${cpf}`
     );
+
+    const clientesHeaders =
+      req.headers && req.headers.authorization
+        ? { Authorization: req.headers.authorization }
+        : {};
+
     const clienteResp = await axios
-      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`)
+      .get(`${CLIENTES_URL}/clientes?cpf=${cpf}`, { headers: clientesHeaders })
       .catch((err) => {
         logFalhaServicoClientes(cpf, err, CLIENTES_URL);
         console.error(
@@ -800,7 +816,6 @@ app.delete("/reservas/:id", autenticar, async (req, res) => {
     const restauranteResp = await axios
       .get(`${RESTAURANTES_URL}/restaurantes/${reserva.restaurante_id}`)
       .catch((err) => {
-        // Log estruturado de falha no serviço de restaurantes (DELETE)
         logFalhaServicoRestaurantes(
           reserva.restaurante_id,
           err,
@@ -828,7 +843,6 @@ app.delete("/reservas/:id", autenticar, async (req, res) => {
           { mesas_disponiveis: novasMesas }
         );
       } catch (err) {
-        // Log estruturado de falha ao atualizar mesas no cancelamento
         logFalhaServicoRestaurantes(
           reserva.restaurante_id,
           err,

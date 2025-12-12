@@ -86,8 +86,11 @@ export default function Reservas() {
         });
         alert("Reserva atualizada com sucesso!");
       } else {
-        // criação permanece pública (conforme seu fluxo atual)
-        await api.post(`${reservasBaseUrl}/reservas`, form);
+        // criação: se tiver token, envia; caso contrário, envia sem header (fluxo público)
+        const config = token
+          ? { headers: { Authorization: `Bearer ${token}` } }
+          : {};
+        await api.post(`${reservasBaseUrl}/reservas`, form, config);
         alert("Reserva cadastrada com sucesso!");
       }
 
