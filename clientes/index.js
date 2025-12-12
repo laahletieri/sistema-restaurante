@@ -17,7 +17,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto";
 function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.status(401).json({ erro: "Token não informado" });
+    return res
+      .status(401)
+      .json({ erro: "Token não informado. Realize seu login." });
   }
 
   const [tipo, token] = authHeader.split(" ");
@@ -157,7 +159,7 @@ async function criarTabelaUsuarios() {
 connectDatabase();
 
 // ===================== ROTAS CLIENTES =====================
-app.get("/clientes", async (req, res) => {
+app.get("/clientes", autenticar, async (req, res) => {
   try {
     const { cpf } = req.query;
     if (cpf) {
@@ -176,7 +178,7 @@ app.get("/clientes", async (req, res) => {
   }
 });
 
-app.get("/clientes/:id", async (req, res) => {
+app.get("/clientes/:id", autenticar, async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM clientes WHERE id = ?", [
       req.params.id,
@@ -200,13 +202,28 @@ app.post("/clientes", autenticar, async (req, res) => {
     ]);
     if (existe.length > 0)
       return res.status(400).json({ erro: "CPF já cadastrado" });
+
+    if (email) {
+      const [exEmail] = await db.query(
+        "SELECT id FROM clientes WHERE email = ?",
+        [email]
+      );
+      if (exEmail.length > 0)
+        return res.status(400).json({ erro: "E-mail já cadastrado" });
+    }
+
     await db.query(
       "INSERT INTO clientes (nome, cpf, email, telefone) VALUES (?, ?, ?, ?)",
       [nome, cpf, email || null, telefone || null]
     );
     res.status(201).json({ mensagem: "Cliente cadastrado com sucesso" });
   } catch (err) {
-    console.error("Erro ao cadastrar cliente:", err.message);
+    console.error("Erro ao cadastrar cliente:", err);
+
+    if (err && err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ erro: "Registro duplicado no banco." });
+    }
+
     res.status(500).json({ erro: "Erro ao cadastrar cliente" });
   }
 });
@@ -227,10 +244,23 @@ app.put("/clientes/:id", autenticar, async (req, res) => {
 
 app.delete("/clientes/:id", autenticar, async (req, res) => {
   try {
-    await db.query("DELETE FROM clientes WHERE id=?", [req.params.id]);
+    const id = req.params.id;
+    const [result] = await db.query("DELETE FROM clientes WHERE id=?", [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ erro: "Cliente não encontrado" });
+    }
+
     res.json({ mensagem: "Cliente removido com sucesso" });
   } catch (err) {
-    console.error("Erro ao remover cliente:", err.message);
+    console.error("Erro ao remover cliente:", err);
+
+    if (err && err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(400).json({
+        erro: "Não é possível excluir o cliente porque existem reservas associadas a ele.",
+      });
+    }
+
     res.status(500).json({ erro: "Erro ao remover cliente" });
   }
 });
@@ -333,4 +363,3 @@ setTimeout(async () => {
     console.error(`[BULLY:${SELF_ID}] Erro na eleição inicial:`, err.message);
   }
 }, 10000);
-
